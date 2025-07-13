@@ -63,6 +63,27 @@ def normalize(data, new_min=0, new_max=1):
     return (data - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
 
 
+def square_axes(x):
+    '''
+    make the axes have the same scale, but allow them to span different ranges, so that the
+    resulting plot is square and shows a to-scale representation of the data. (useful for
+    IQ circle plots for example)
+    
+    Parameters:
+    -----------
+    x : axes object 
+    '''
+    
+    x.set_aspect('equal', adjustable='box')
+    x_limits = x.get_xlim()
+    y_limits = x.get_ylim()
+    max_extent = max(x_limits[1] - x_limits[0], y_limits[1] - y_limits[0])
+    x_mid = (x_limits[0] + x_limits[1]) / 2
+    y_mid = (y_limits[0] + y_limits[1]) / 2
+    x.set_xlim([x_mid - max_extent / 2, x_mid + max_extent / 2])
+    x.set_ylim([y_mid - max_extent / 2, y_mid + max_extent / 2])
+
+
 
 def rotate_iq_plane(iqdata, n_thetas=50, use_mean_value=False, make_plots=False, plot_save_dir=None):
 

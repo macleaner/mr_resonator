@@ -620,7 +620,7 @@ class MR_complex_resonator():
         '''
 
         bigsigma = 3.4e10 * 1e-18 # W um^-3 K-1 for Al film
-        bigsigma = bigsigma / self.big_sigma_factor
+        bigsigma = bigsigma * self.big_sigma_factor
         tau_quotient = 1
 
         Delta_bath = self.calc_Delta_gao(T=Tb)
