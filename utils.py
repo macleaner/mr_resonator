@@ -85,7 +85,7 @@ def square_axes(x):
 
 
 
-def rotate_iq_plane(iqdata, n_thetas=50, use_mean_value=False, make_plots=False, plot_save_dir=None):
+def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True, use_mean_value=False, make_plots=False, plot_save_dir=None):
 
     '''
     rotate the iq plane until the stddev is maximized in the 'Q' direction
@@ -150,6 +150,10 @@ def rotate_iq_plane(iqdata, n_thetas=50, use_mean_value=False, make_plots=False,
         ratio = np.asarray(qstds) / np.asarray(istds)
     theta_best = 2*np.pi - theta_range[np.argmax(ratio)]
     iqrot = (iqdata) * np.exp(1.j*theta_best)
+    
+    if enforce_positive_i and np.mean(iqrot)<0:
+        iqrot *= np.exp(1.j*np.pi)
+        theta_best += np.pi
 
     return iqrot, theta_best 
 
