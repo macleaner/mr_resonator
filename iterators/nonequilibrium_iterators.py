@@ -18,14 +18,14 @@ from mr_complex_resonator import MR_complex_resonator as MR_complex_resonator
 from mr_lekid import MR_LEKID as MR_LEKID
 import utils
 
-
 def single_resonance_iterator(res, carrier_freq_timestream,
                           carrier_Vin_timestream, nqp_timestream=None,
                           watcher_span = 100e3, nwatchers=1000, 
                           Icrit=1e-3,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
-                          Ires_fs=1e7, stabilize_first=True,
+                          Ires_fs=1e7, system_fs=1e4,
+                          stabilize_first=True,
                           stop_when_comb_hithered=False, comb_hither_threshold=1e3,
                           gather_calsamps=True):
     '''
@@ -43,7 +43,6 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     from this change in Lk.
     '''
     fix_Lg = res.lekid.Lg
-    Vin = res.lekid.Vin
     lekid = res.lekid
     fr = lekid.compute_fr()
 
@@ -65,7 +64,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     Zres = res.lekid.total_impedance(carrier_freq_timestream[0])
     ZRLC = res.lekid.parallel_RLC(carrier_freq_timestream[0])
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres)
-    Iin = Vin / (Zpar + r2)
+    Iin = carrier_Vin_timestream[0] / (Zpar + r2)
     Ires = Iin * Zpar/Zres
     ZL = 2.j*np.pi*(res.lekid.Lk + res.lekid.Lg)*carrier_freq_timestream[0]
     IL = Ires * ZRLC / (ZL + res.lekid.R)
@@ -136,10 +135,11 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         new_lekid = MR_LEKID(**lekid_params)
         Vout = new_lekid.compute_Vout(carrier_freq) ###
         
-        watcherval = new_lekid.compute_Vout(watcher_frange)
+        
         outdict[step]['fr'] = new_lekid.compute_fr()
         outdict[step]['carrier_Vout'] = Vout
         if save_watcher_data:
+            watcherval = new_lekid.compute_Vout(watcher_frange)
             outdict[step]['watcher_Vout'] = watcherval
             
         Zres = new_lekid.total_impedance(carrier_freq)
@@ -164,12 +164,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict[step]['t'] = step * ttt
 
         if abs(outdict[step]['fr'] - carrier_freq) < comb_hither_threshold and step > 0:
-            # print('hit threshold at astep', astep, 'stabilize_iter:', stabilize_iter)
             stopflag = True
         step += 1
 
-    # print('finished loop. astep:', astep)
-    # print(stopflag)
     if not stopflag or not stop_when_comb_hithered:
         step -= 1
     # return the final version of the resonator, with the drive applied
@@ -217,8 +214,8 @@ def single_resonance_iterator(res, carrier_freq_timestream,
             ### and I guess we assume that the INDUCTOR current follows this instantly...? TODO
             next_IL = Ires * ZRLC / (ZL + R)
             IL = next_IL
-
-    outdict[step]['calsamps'] = np.asarray(calsamps)
+    if gather_calsamps:
+        outdict[step]['calsamps'] = np.asarray(calsamps)
     return outdict
 
 
