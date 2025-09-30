@@ -7,10 +7,9 @@ maclean.rouble@mail.mcgill.ca
 '''
 
 
-
-
-
 import numpy as np
+from scipy.optimize import curve_fit
+
 
 
 def calc_Cc(C, f0, Qc, Z0=50):
@@ -19,7 +18,7 @@ def calc_Cc(C, f0, Qc, Z0=50):
 
 
 
-#######################
+#################
 # UTILS
 #################
 
@@ -156,6 +155,97 @@ def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True, use_mean_value
         theta_best += np.pi
 
     return iqrot, theta_best 
+
+
+def s21_skewed(f, f0, Qr, Qcre, Qcim, A):
+    if abs(Qcre + 1j*Qcim)**2/Qcre < Qr: # prevents negative Qi values
+        return np.inf
+    else:
+        x = (f-f0)/f0
+        return abs(A*(1 - Qr/(Qcre+1j*Qcim)/(1+2j*Qr*x)))
+
+def fit_skewed(freq, s21_iq, approxQr=1e4, normalize=True, fr_lim=None):
+    '''
+    Apply Pete's skewed resonance model to a given set of s21 vs frequency data.
+
+    NOTE the "sigma" on the fitter uses an arbitrary value but should instead use an estimate
+    of system noise.
+    
+    Parameters
+    ----------
+    freq : (list or np array) frequency values from a network analysis
+
+    s21_iq : (list or np array) measured values from a network analysis, in i+jq or magnitude format.
+
+    Returns
+    -------
+
+    fit_dict : (dict) dictionary of resonance parameters extracted from fit, with uncertainties. If 
+        fit fails, returns 'nan'
+    
+    '''
+
+    bad_fit_flag = False
+
+    param_names = ['fr', 'Qr', 'Qc', 'Qi', 'Qcre', 'Qcim', 'A']
+    fit_dict = {}
+
+    freq = np.asarray(freq)
+    s21_iq = np.asarray(s21_iq)
+
+    if normalize:
+        s21_iq = s21_iq/s21_iq[-1]
+
+    if fr_lim is None:
+        fr_lbound = min(freq)
+        fr_ubound = max(freq)
+        fr_guess = freq[np.argmin(abs(s21_iq))]
+    else:
+        fr_lbound = np.mean(freq) - fr_lim
+        fr_ubound = np.mean(freq) + fr_lim
+        fr_guess = np.mean(freq)
+    
+    init = [fr_guess, approxQr, approxQr, -approxQr, abs(s21_iq).mean()]
+    bounds = ([fr_lbound, 0, 0, -np.inf, 0], [fr_ubound, np.inf, np.inf, np.inf, np.inf])
+    try:
+        s21fitp, s21cov = curve_fit(s21_skewed, freq, abs(s21_iq), p0=init, bounds=bounds, sigma=np.ones(len(freq))*90)
+        errs = np.sqrt(np.diag(s21cov))
+        f0, Qr = s21fitp[0:2]
+        Qe = s21fitp[2] + 1j*s21fitp[3]
+        Qc = abs(Qe)**2/Qe.real
+        Qi = 1./(1/Qr - 1/Qc)
+        param_vals = [f0, Qr, Qc, Qi, s21fitp[2], s21fitp[3], s21fitp[4]]
+        
+        errf0, errQr, errQere, errQeim = errs[0:4] # error in f0, Qr, Qe_re, Qe_im
+        errQc = np.sqrt(errQere**2 + (2 * errQeim * Qe.imag/Qe.real)**2 + errQere*Qe.imag**2/Qe.real**2)
+        errQi = np.sqrt(Qi**4*(errQr**2/Qr**4 + errQc**2/Qc**4))
+        errA = errs[-1]
+        param_errs = [errf0, errQr, errQc, errQi, errQere, errQeim, errA]
+
+        if np.inf in param_vals:
+            print('fit did not converge: found infinity in parameter value.')
+            bad_fit_flag = True
+        if  np.inf in param_errs:
+            print('fit did not converge: found infinity in parameter error.')
+            bad_fit_flag = True
+
+        for i in range(len(param_names)):
+            fit_dict[param_names[i]] = param_vals[i]
+            fit_dict['%s_err'%(param_names[i])] = param_errs[i]
+
+
+        
+    except (RuntimeError, ValueError) as e:
+        print(e, '\nfit did not converge')
+        bad_fit_flag = True
+
+    if bad_fit_flag:
+        for i in range(len(param_names)):
+            fit_dict[param_names[i]] = 'nan'
+            fit_dict['%s_err'%(param_names[i])] = 'nan'
+
+                
+    return fit_dict
 
 
 

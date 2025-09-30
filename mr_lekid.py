@@ -12,6 +12,8 @@ from scipy.optimize import brentq
 
 import matplotlib as mpl
 
+import utils
+
 
 class MR_LEKID():
     
@@ -348,18 +350,45 @@ class MR_LEKID():
         Qc = (8 * self.C) / (self.Cc**2 * (2 * np.pi * fr * Z0) )
         return Qc
 
+    def compute_Qi(self):
+        '''
+        
+        '''
+        fr = self.compute_fr()
+        L = self.Lk + self.Lg
+        Qr = np.pi * fr *2 * L / self.R
+        return Qr
+
+    # def compute_Qi(self):
+
+    #     Qr = self.compute_Qr()
+    #     Qc = self.compute_Qc()
+    #     Qi = 1./(1./Qr - 1./Qc)
+    #     return Qi
+    def compute_Qr(self):
+        Qi = self.compute_Qi()
+        Qc = self.compute_Qc()
+        Qr = 1./(1./Qi + 1./Qc)
+        return Qr
+
+    def compute_Q_values(self):
+        Qr = self.compute_Qr()
+        Qi = self.compute_Qi()
+        Qc = self.compute_Qc()
+        return Qr, Qi, Qc
+
     def fit_for_Q_values(self, span=300e3, npts=1000):
         '''
         use pete's asymmetric lorentzian fitter to estimate Q values for this resonator
         TODO this should be replaced with a generic fit wrapper
         '''
 
-        import hidfmux.analysis.fit_resonances as fit_resonances
+        # import hidfmux.analysis.fit_resonances as fit_resonances
 
         fr = self.compute_fr()
         frange = np.linspace(fr-span, fr+span, npts)
         Vout = self.compute_Vout(frange)
-        fit_dict = fit_resonances.fit_skewed(frange, Vout)
+        fit_dict = utils.fit_skewed(frange, Vout)
 
         Qr = fit_dict['Qr']
         Qi = fit_dict['Qi']
@@ -400,7 +429,7 @@ class MR_LEKID():
         ax.plot(plotfrange, Qout, ':', color='royalblue', label='$V_Q$')
         ax.plot(plotfrange, abs(Vout), '-', color='royalblue', lw=2, label='|$V_{out}$|')
 
-        ax.set_title('Resonator frequency response\n$f_r$ = %d MHz; $V_{in}$=%.1f $\mu V$'%(1e-6*fr, 1e6*self.Vin.real))
+        ax.set_title('Resonator frequency response\n$f_r$ = %d MHz; $V_{in}$=%.1f $\\mu V$'%(1e-6*fr, 1e6*self.Vin.real))
 
         ax.set_ylabel('V$_{out}$')
         ax.set_xlabel('Freq. offset from f$_r$ [kHz]')

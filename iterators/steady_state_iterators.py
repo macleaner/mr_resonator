@@ -9,6 +9,7 @@ maclean.rouble@mail.mcgill.ca
 
 
 import numpy as np
+import copy
 
 from mr_complex_resonator import MR_complex_resonator as MR_complex_resonator
 from mr_lekid import MR_LEKID as MR_LEKID
@@ -18,20 +19,27 @@ import utils
 
 
 
-def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_timestream,
+def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestream,
+                    nqp_timestream=None,
                     save_watcher_data=True, watcher_span=300e3, Icrit=1e-3,
                     niters=150, damp=0.1,
+                    stop_when_comb_hithered=False, comb_hither_foffset=0, comb_hither_threshold=500,
                     verbose=False):
     '''
-    
+    comb_hither_foffset: the target frequency separation between the carrier
+        and the driven resonant frequency
     '''
 
+    target = copy.deepcopy(res)
 
     # probe sweep parameters
     fr = target.lekid.compute_fr()
+
+    if nqp_timestream is None:
+        nqp_timestream = np.ones(len(carrier_freq_timestream)) * target.calc_nqp()
     
-    Qr, Qi, Qc = target.lekid.fit_for_Q_values()
-    nominal_tau_targ = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
+    # Qr, Qi, Qc = target.lekid.fit_for_Q_values()
+    # nominal_tau_targ = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
     
     # we need to know the other impedances in the nearby circuit to compute the current
     r1, r2, r3 = target.lekid.get_att_vals(target.lekid.input_atten_dB)
@@ -56,11 +64,14 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
     params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres']
     carrier_params = ['carrier_freq', 'carrier_Vin', 'carrier_Vout', 'Iin']
     
+    stop_flag = False
     
     # start sweepin'
     for step in range(len(carrier_freq_timestream)):
+
         outdict[step] = {}
         if step == 0:
+            outdict[0]['resonator'] = target
             if save_watcher_data:
                 outdict[0]['watcher_freq'] = watcher_freq # just save this once since it's always the same
                 
@@ -72,6 +83,9 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
         outdict[step]['carrier_Vout']['iters'] = []
         outdict[step]['Iin'] = {}
         outdict[step]['Iin']['iters'] = []
+
+        nqp = nqp_timestream[step]
+        outdict[step]['nqp'] = nqp
     
         for resonator in ['targ']:
             outdict[step][resonator] = {}
@@ -79,17 +93,7 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
                 outdict[step][resonator][param] = {}
                 outdict[step][resonator][param]['iters'] = []
         
-#         # get the base impedances due to the qp population        
-#         targ_nqp = target.calc_nqp()
-#         targ_sigma1 = target.calc_sigma1(f=carrier_freq, nqp=targ_nqp)
-#         targ_sigma2 = target.calc_sigma2(f=carrier_freq, nqp=targ_nqp)
-#         targ_sigma = targ_sigma1 - 1.j*targ_sigma2
 
-#         targ_Zs = target.calc_Zs(f=carrier_freq, sigma=targ_sigma) 
-#         targ_R, targ_Lk = target.calc_R_L(f=carrier_freq, Zs=targ_Zs)
-#         targ_R = targ_R + target.R_spoiler
-#         outdict[step]['targ']['Lk']['iters'].append(targ_Lk)
-#         outdict[step]['targ']['R']['iters'].append(targ_R)
         
         # up to this point these should always be the same on each iter, since we are not changing nqp.
         for iiter in range(niters): # iterate at this carrier freq and Vin to steady state\
@@ -99,7 +103,7 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
             outdict[step]['targ']['IL']['iters'].append(targ_IL)
             
             # get the base impedances due to the qp population        
-            targ_nqp = target.calc_nqp()
+            targ_nqp = nqp
             targ_sigma1 = target.calc_sigma1(f=carrier_freq, nqp=targ_nqp)
             targ_sigma2 = target.calc_sigma2(f=carrier_freq, nqp=targ_nqp)
             targ_sigma = targ_sigma1 - 1.j*targ_sigma2
@@ -127,9 +131,6 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
             
             next_Itarg = Iin * Zpar/Ztarg
             Itarg = Itarg + damp*(next_Itarg - Itarg)
-#             Ires_fs = nominal_tau_targ*2.1 # some fast "nature" sampling rate
-#             ttt = 1./Ires_fs
-#             Itarg = next_Itarg + (Itarg - next_Itarg) * np.exp(-ttt / nominal_tau_targ)
             
             targ_ZL = 2.j*np.pi*(targ_Lk + target.Lg)*carrier_freq
             targ_ZRLC = targ_new_lekid.parallel_RLC(carrier_freq)
@@ -150,8 +151,20 @@ def single_resonance_iterator(target, carrier_freq_timestream, carrier_Vin_times
             for param in params:
                 outdict[step][resonator][param]['final'] = outdict[step][resonator][param]['iters'][-1]
 
+        if stop_when_comb_hithered:
+            if abs((carrier_freq - targ_fr) - comb_hither_foffset) < comb_hither_threshold:
+                stop_flag = True
+                # print('Comb hither! stopping at step %d'%step)
+
+        if stop_flag:
+            break
+
+    target.lekid = targ_new_lekid
+    # TODO update other params?
+    outdict[step]['resonator'] = target
     outdict[step]['Iin']['final'] = outdict[step]['Iin']['iters'][-1]
     outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
+    outdict[step]['comb_hithered'] = stop_flag
         
     return outdict
 
