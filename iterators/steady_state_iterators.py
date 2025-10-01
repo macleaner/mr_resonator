@@ -85,13 +85,15 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
         outdict[step]['Iin']['iters'] = []
 
         nqp = nqp_timestream[step]
-        outdict[step]['nqp'] = nqp
+        
     
         for resonator in ['targ']:
             outdict[step][resonator] = {}
             for param in params:
                 outdict[step][resonator][param] = {}
                 outdict[step][resonator][param]['iters'] = []
+
+        outdict[step]['targ']['nqp'] = nqp
         
 
         
@@ -138,6 +140,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
             
             Vout = carrier_Vin * (Zpar / (r2 + Zpar))
             outdict[step]['carrier_Vout']['iters'].append(Vout)
+
             
         # get the whole transfer function from the "watcher" measurement
         # only do this after the iterations or else the output is tooooo big
@@ -145,12 +148,14 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
             Ztarg = targ_new_lekid.total_impedance(fc=watcher_freq)
             Zpar = 1./(1./ZLNA + 1./r3 + 1./Ztarg)
             watcher_Vout = 1. * (Zpar / ( r2 + Zpar))
+            watcher_Vout *= carrier_Vin
             outdict[step]['watcher_Vout'] = watcher_Vout
             
         for resonator in ['targ']:    
             for param in params:
                 outdict[step][resonator][param]['final'] = outdict[step][resonator][param]['iters'][-1]
-
+        outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
+        
         if stop_when_comb_hithered:
             if abs((carrier_freq - targ_fr) - comb_hither_foffset) < comb_hither_threshold:
                 stop_flag = True
