@@ -83,6 +83,49 @@ def square_axes(x):
     x.set_ylim([y_mid - max_extent / 2, y_mid + max_extent / 2])
 
 
+def exp_bin_noise_data(f, psd, nbins=100):
+    '''
+    Bin a noise PSD, using exponential bin sizes.
+    Not statistically rigorous!!
+    
+    Parameters:
+    -----------
+    f : list or np.array
+        frequency data
+    psd : list or np.array
+        power spectral density data
+        
+    Returns:
+    --------
+    (np.array) binned frequency data
+    (np.array) binned PSD data
+    '''
+    f = np.asarray(f)
+    psd = np.asarray(psd)
+    
+    fbinned = []
+    cavg = []
+    std = []
+
+    # nbins = 100
+    fmin = f[0] + 10e-3 #######
+    fmax = f[-1]
+
+    for k in range(nbins-1):
+        (fl, fh) = fmin * (fmax / fmin)**(np.asarray([k,k+1])/(nbins - 1.))
+        wh = np.where((f>fl)*(f<=fh))[0]
+
+        if len(wh) != 0:
+            fbinned.append(np.mean([fl,fh]))
+            cavg.append(np.mean(psd[wh]))
+            std.append(np.std(psd[wh]))
+
+    fbinned = np.asarray(fbinned)
+    cavg = np.asarray(cavg)
+    
+    return fbinned, cavg
+
+
 
 def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True, use_mean_value=False, make_plots=False, plot_save_dir=None):
 

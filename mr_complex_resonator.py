@@ -25,7 +25,7 @@ mu0 = 8.85e-12 # F / m
 class MR_complex_resonator(): 
     
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
-                 length=None, C=0.5e-12, Cc=0.01e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
+                 length=None, C=0.5e-12, Cc=0.005e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, sigmaN=1./(4*20e-9),
                  Vin=0.15e-3, input_atten_dB=20,
                  verbose=False):

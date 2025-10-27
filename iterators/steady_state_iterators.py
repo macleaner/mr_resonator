@@ -10,6 +10,8 @@ maclean.rouble@mail.mcgill.ca
 
 import numpy as np
 import copy
+import matplotlib.pyplot as plt
+from scipy import interpolate as interpolate
 
 from mr_complex_resonator import MR_complex_resonator as MR_complex_resonator
 from mr_lekid import MR_LEKID as MR_LEKID
@@ -23,10 +25,10 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
                     nqp_timestream=None,
                     save_watcher_data=True, watcher_span=300e3, Icrit=1e-3,
                     niters=150, damp=0.1,
-                    stop_when_comb_hithered=False, comb_hither_foffset=0, comb_hither_threshold=500,
+                    stop_when_comb_hithered=False, comb_hither_fdetune=0, comb_hither_threshold=500,
                     verbose=False):
     '''
-    comb_hither_foffset: the target frequency separation between the carrier
+    comb_hither_fdetune: the target frequency separation between the carrier
         and the driven resonant frequency
     '''
 
@@ -157,7 +159,10 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
         outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
         
         if stop_when_comb_hithered:
-            if abs((carrier_freq - targ_fr) - comb_hither_foffset) < comb_hither_threshold:
+            # fdetune = fc - fr --> fr = fc - fdetune
+            # print('%.3e'%(abs((carrier_freq - comb_hither_fdetune) - targ_fr)))
+            if abs((carrier_freq - comb_hither_fdetune) - targ_fr) < comb_hither_threshold:
+            # if abs((carrier_freq - targ_fr) - comb_hither_fdetune) < comb_hither_threshold:
                 stop_flag = True
                 # print('Comb hither! stopping at step %d'%step)
 
@@ -356,3 +361,163 @@ def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_V
 
 
     
+
+
+
+
+
+def set_up_for_feedback(res, foffset=-30e3, 
+                      carrier_Vin_timestream=np.linspace(10e-5, 50e-6, 100),
+                        fdetune=0, comb_hither_threshold=50., 
+                        gather_calsamps=True, make_plots=False):
+    
+
+    fr0 = res.lekid.compute_fr()
+    carrier_freq = res.lekid.compute_fr() + foffset + fdetune
+    carrier_freq_timestream = np.ones(len(carrier_Vin_timestream)) * carrier_freq
+
+    # first just sweep across the whole range and get the comb hither point
+    exploratory_outdict = single_resonance_iterator(res=res, carrier_freq_timestream=carrier_freq_timestream, 
+                                                 carrier_Vin_timestream=carrier_Vin_timestream,
+                                                nqp_timestream=None,
+                                                niters=200, damp=0.1,
+                                                stop_when_comb_hithered=False, comb_hither_fdetune=fdetune,
+                                                 comb_hither_threshold=comb_hither_threshold)
+    
+    steps = list(exploratory_outdict.keys())
+
+    carrier_Vin = np.asarray([exploratory_outdict[step]['carrier_Vin'] for step in steps])
+    fr = np.asarray([exploratory_outdict[step]['targ']['fr']['final'] for step in steps])
+    fsep= 1e-3*(carrier_freq - (fr))
+    # interpolate the sweep  since the comb hither point probably wasn't dead on
+    fsep_interp = interpolate.interp1d(carrier_Vin, fsep)
+    Vin_interp = np.linspace(carrier_Vin[0], carrier_Vin[-1], 10000)
+    comb_hither_ind = abs(fsep_interp(Vin_interp) - 1e-3*fdetune).argmin()
+    comb_hither_Vin = Vin_interp[comb_hither_ind]
+#     print(min(abs(fsep_interp(Vin_interp))))
+    
+    
+    if make_plots:
+        nplots = 3
+        nperrow = 3
+        nrows = 1
+        fig = plt.figure(figsize=(6*nperrow, 5*nrows))
+        axarr = []
+        for x in range(nplots):
+            ax = fig.add_subplot(nrows, nperrow, x+1)
+            axarr.append(ax)
+        fig.suptitle('foffset %.1e, fdetune %.1e'%(foffset, fdetune))
+        axarr[2].plot(carrier_Vin, fsep, label='exploratory')
+        axarr[2].scatter(comb_hither_Vin, fsep_interp(comb_hither_Vin), marker='o')
+    
+    # now steady state iterate with a voltage itmestream going to this point
+    if abs(foffset) > 20e3:
+        nsteps = len(carrier_Vin_timestream) * 3
+    else:
+        nsteps = len(carrier_Vin_timestream) * 2
+    targeted_Vin_timestream = np.logspace(np.log10(carrier_Vin[0]), 
+        np.log10(comb_hither_Vin), 
+        nsteps)
+    carrier_freq_timestream = np.ones(len(targeted_Vin_timestream)) * carrier_freq
+    outdict = single_resonance_iterator(res=res, carrier_freq_timestream=carrier_freq_timestream, 
+                                                 carrier_Vin_timestream=targeted_Vin_timestream,
+                                                nqp_timestream=None,
+                                                niters=200, damp=0.1,
+                                                stop_when_comb_hithered=True,
+                                                comb_hither_fdetune=fdetune,
+                                                 comb_hither_threshold=comb_hither_threshold)
+    steps = list(outdict.keys())
+    # print(steps, steps[-1])
+
+    
+    # use another steady state iterator to evaluate the quadrature of the initialized resonator's response
+    comb_hithered_resonator = outdict[steps[-1]]['resonator']
+    Vout_setpoint = outdict[steps[-1]]['carrier_Vout']['final']
+    Vin_setpoint = outdict[steps[-1]]['carrier_Vin']
+    watcher_Vout = outdict[steps[-1]]['watcher_Vout']
+    nqp = comb_hithered_resonator.calc_nqp()
+    nqp_timestream = np.random.normal(nqp, nqp*0.001, 30)
+    print(np.mean(nqp_timestream), np.std(nqp_timestream))
+    carrier_Vin_timestream = Vin_setpoint * np.ones(len(nqp_timestream))
+    carrier_freq_timestream = carrier_freq * np.ones(len(nqp_timestream))
+    outdict_calsamps = single_resonance_iterator(res=comb_hithered_resonator, 
+                                                 carrier_freq_timestream=carrier_freq_timestream, 
+                                                 carrier_Vin_timestream=carrier_Vin_timestream,
+                                                nqp_timestream=nqp_timestream)
+    
+
+    
+    if make_plots:
+        carrier_freq = outdict[steps[0]]['carrier_freq']
+        watcher_freq = outdict[0]['watcher_freq']
+
+        # print(len(steps))
+        if len(steps) > 1:
+            skip = len(steps) // 10
+        else:
+            skip = 1
+        for step in steps[::skip]:
+            plotcolour = plt.cm.gnuplot(float(step) / len(steps))
+            watcher_Vout = outdict[step]['watcher_Vout']
+            mag_db = 20*np.log10(abs(watcher_Vout)/abs(watcher_Vout[-1]))
+            axarr[0].plot(1e-3*(watcher_freq-fr0), mag_db, alpha=0.7, color=plotcolour)
+        # always plot the last one
+        watcher_Vout = outdict[steps[-1]]['watcher_Vout']
+        mag_db = 20*np.log10(abs(watcher_Vout)/abs(watcher_Vout[-1]))
+        axarr[0].plot(1e-3*(watcher_freq-fr0), mag_db, alpha=0.7, color='tab:red')
+        axarr[0].axvline(1e-3*(carrier_freq-fr0), label='$f_{carrier}$')
+        axarr[0].set_xlabel('f - fr0 [kHz]')
+
+        carrier_Vin = np.asarray([outdict[step]['carrier_Vin'] for step in steps])
+        fr = np.asarray([outdict[step]['targ']['fr']['final'] for step in steps])
+        fsep= 1e-3*(carrier_freq - fr)
+
+        Lk_Isq = np.asarray([outdict[step]['targ']['Lk_Isq']['final'] for step in steps])
+        Lk = np.asarray([outdict[step]['targ']['Lk']['final'] for step in steps])
+        # nqp = np.asarray([outdict[step]['targ']['nqp'] for step in steps])
+        # t = np.asarray([outdict[step]['t'] for step in steps])
+        IL = np.asarray([outdict[step]['targ']['IL']['final'] for step in steps])
+        Zres = np.asarray([outdict[step]['targ']['Zres']['final'] for step in steps])
+
+        axarr[2].plot(carrier_Vin, fsep, '--', label='targeted')
+        axarr[2].axhline(0, label='$f_{carrier}$')
+        axarr[2].axhline(fdetune*1e-3, linestyle='--', label='$f_{offset}$')
+        axarr[2].set_ylabel('$f_{carrier} - f_r$ [kHz]')
+
+        # axarr[3].plot(steps, Lk, label='Lk')
+        # axarr[3].plot(steps, Lk_Isq, label='Lk(I)')
+        # axarr[3].set_ylabel('Lk')
+
+        # axarr[4].plot(steps, abs(IL))
+        # axarr[4].set_ylabel('IL')
+
+        # axarr[5].plot(steps, abs(Zres))
+        # axarr[5].set_ylabel('Zres')
+
+    # scatter the calsamps on top
+    calsamps_steps = list(outdict_calsamps.keys())
+    carrier_Vin = np.asarray([outdict_calsamps[step]['carrier_Vin'] for step in calsamps_steps])
+    carrier_Vout = np.asarray([outdict_calsamps[step]['carrier_Vout']['final'] for step in calsamps_steps])
+    if make_plots:
+        axarr[1].scatter(carrier_Vout.real, carrier_Vout.imag, alpha=0.7)
+        axarr[1].scatter(Vout_setpoint.real, Vout_setpoint.imag, marker='*', s=250, label='setpoint')
+        axarr[1].set_ylabel('calsamps Q')
+        axarr[1].set_ylabel('calsamps I')
+        utils.square_axes(axarr[1])
+
+    calsamps = carrier_Vout
+        
+    if make_plots:
+        for x in axarr:
+            x.legend()
+        for x in axarr[2:]:
+            x.set_xlabel('sample #')
+        axarr[2].set_xlabel('Vin')
+        fig.tight_layout()
+
+        
+
+    return outdict[steps[-1]], calsamps
+
+
+
