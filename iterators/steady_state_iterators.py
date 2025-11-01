@@ -185,9 +185,12 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
 
 
 
-def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_Vin_timestream,
+def two_resonance_iterator(target, neighbour,
+                    carrier_freq_timestream, carrier_Vin_timestream,
+                    targ_nqp_timestream=None, neigh_nqp_timestream=None,
                     save_watcher_data=True, watcher_span=300e3, Icrit=1e-3,
-                    niters=150, damp=0.1,
+                    niters=150, damp=0.1, 
+                    stop_when_comb_hithered=False, comb_hither_fdetune=0, comb_hither_threshold=500,
                     verbose=False):
     '''
     
@@ -230,14 +233,22 @@ def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_V
     neigh_IL = Itarg * neigh_ZRLC / (neigh_ZL + target.lekid.R)
 
     outdict = {}
-    params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres']
+    params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres', 'nqp']
     carrier_params = ['carrier_freq', 'carrier_Vin', 'carrier_Vout', 'Iin']
     
-    
+    if targ_nqp_timestream is None:
+        targ_nqp_timestream = np.ones(len(carrier_Vin_timestream)) * target.calc_nqp()
+    if neigh_nqp_timestream is None:
+        neigh_nqp_timestream = np.ones(len(carrier_Vin_timestream)) * neighbour.calc_nqp()
+
+    stop_flag = False
+
     # start sweepin'
     for step in range(len(carrier_freq_timestream)):
         outdict[step] = {}
         if step == 0:
+            outdict[step]['target'] = target
+            outdict[step]['neighbour'] = neighbour
             if save_watcher_data:
                 outdict[0]['watcher_freq'] = watcher_freq # just save this once since it's always the same
                 
@@ -257,12 +268,14 @@ def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_V
                 outdict[step][resonator][param]['iters'] = []
         
         # get the base impedances due to the qp population        
-        targ_nqp = target.calc_nqp()
+        # targ_nqp = target.calc_nqp()
+        targ_nqp = targ_nqp_timestream[step]
         targ_sigma1 = target.calc_sigma1(f=carrier_freq, nqp=targ_nqp)
         targ_sigma2 = target.calc_sigma2(f=carrier_freq, nqp=targ_nqp)
         targ_sigma = targ_sigma1 - 1.j*targ_sigma2
 
-        neigh_nqp = neighbour.calc_nqp()
+        # neigh_nqp = neighbour.calc_nqp()
+        neigh_nqp = neigh_nqp_timestream[step]
         neigh_sigma1 = neighbour.calc_sigma1(f=carrier_freq, nqp=neigh_nqp)
         neigh_sigma2 = neighbour.calc_sigma2(f=carrier_freq, nqp=neigh_nqp)
         neigh_sigma = neigh_sigma1 - 1.j*neigh_sigma2
@@ -272,6 +285,9 @@ def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_V
         # up to this point these should always be the same on each iter, since we are not changing nqp.
         for iiter in range(niters): # iterate at this carrier freq and Vin to steady state\
             outdict[step]['Iin']['iters'].append(Iin)
+
+            outdict[step]['targ']['nqp']['iters'].append(targ_nqp)
+            outdict[step]['neigh']['nqp']['iters'].append(neigh_nqp)
             
             outdict[step]['targ']['Zres']['iters'].append(Ztarg)
             outdict[step]['neigh']['Zres']['iters'].append(Zneigh)
@@ -353,10 +369,27 @@ def two_resonance_iterator(target, neighbour, carrier_freq_timestream, carrier_V
         for resonator in ['targ', 'neigh']:    
             for param in params:
                 outdict[step][resonator][param]['final'] = outdict[step][resonator][param]['iters'][-1]
+        outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
+        outdict[step]['Iin']['final'] = outdict[step]['Iin']['iters'][-1]
+        if stop_when_comb_hithered:
+            # fdetune = fc - fr --> fr = fc - fdetune
+            # print('%.3e'%(abs((carrier_freq - comb_hither_fdetune) - targ_fr)))
+            if abs((carrier_freq - comb_hither_fdetune) - targ_fr) < comb_hither_threshold:
+            # if abs((carrier_freq - targ_fr) - comb_hither_fdetune) < comb_hither_threshold:
+                stop_flag = True
+                # print('Comb hither! stopping at step %d'%step)
 
-    outdict[step]['Iin']['final'] = outdict[step]['Iin']['iters'][-1]
-    outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
-        
+        if stop_flag:
+            break
+
+    # outdict[step]['Iin']['final'] = outdict[step]['Iin']['iters'][-1]
+    # outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
+    target.lekid = targ_new_lekid
+    neighbour.lekid = neigh_new_lekid
+    outdict[step]['target'] = target
+    outdict[step]['neighbour'] = neighbour
+    outdict[step]['comb_hithered'] = stop_flag
+
     return outdict
 
 
