@@ -27,7 +27,7 @@ class MR_complex_resonator():
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
                  length=None, C=0.5e-12, Cc=0.005e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, sigmaN=1./(4*20e-9),
-                 Vin=0.15e-3, input_atten_dB=20,
+                 Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1,
                  verbose=False):
         self.T = T
         self.readout_f = base_readout_f
@@ -91,7 +91,7 @@ class MR_complex_resonator():
             self.Lg = fix_Lg
             self.alpha_k = self.Lk_initial / (self.Lk_initial + self.Lg)
         
-        self.lekid_params_initial = dict(R=self.R_initial, Lk=self.Lk_initial, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, L_junk=self.L_junk)
+        self.lekid_params_initial = dict(R=self.R_initial, Lk=self.Lk_initial, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
         if verbose:
             print('initial parameters:')
             print(self.lekid_params_initial)
@@ -127,7 +127,7 @@ class MR_complex_resonator():
             self.Lg = fix_Lg
             self.alpha_k = self.Lk_dark / (self.Lk_dark + self.Lg)
         
-        self.lekid_params_dark = dict(R=self.R_dark, Lk=self.Lk_dark, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, L_junk=self.L_junk)
+        self.lekid_params_dark = dict(R=self.R_dark, Lk=self.Lk_dark, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
         self.lekid = MR_LEKID(**self.lekid_params_dark, verbose=verbose)
         self.readout_f = self.lekid.compute_fr()
         if verbose:
