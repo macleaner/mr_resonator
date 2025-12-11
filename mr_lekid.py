@@ -21,7 +21,29 @@ class MR_LEKID():
                  Qi=None, Qc=None, Vin=None, fr_presign2=-1, 
                  system_termination=50., input_atten_dB=20, ZLNA=complex(50.,0), GLNA=1., name='LR SERIES',
                 LNA_noise_temperature=6, plot_response=False, verbose=False):
-        
+    
+        self._init_params = {
+            "C": C,
+            "R": R,
+            "Cc": Cc,
+            "Lk": Lk,
+            "Lg": Lg,
+            "alpha_k": alpha_k,
+            "L_junk": L_junk,
+            "Qi": Qi,
+            "Qc": Qc,
+            "Vin": Vin,
+            "fr_presign2": fr_presign2,
+            "system_termination": system_termination,
+            "input_atten_dB": input_atten_dB,
+            "ZLNA": ZLNA,
+            "GLNA": GLNA,
+            "name": name,
+            "LNA_noise_temperature": LNA_noise_temperature,
+            "plot_response": plot_response,
+            "verbose": verbose,
+        }
+
             
         self.Lk = Lk
         if Lg is None:

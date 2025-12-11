@@ -19,16 +19,46 @@ import utils
 
 h = 6.626e-34
 kb = 1.38e-23
-mu0 = 8.85e-12 # F / m
+# mu0 = 8.85e-12 # F / m
+mu0 = 1.257e-6
 
 
 class MR_complex_resonator(): 
     
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
-                 length=None, C=0.5e-12, Cc=0.005e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
+                 length=None, C=0.5e-12, Cc=0.002e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, sigmaN=1./(4*20e-9),
                  Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1,
                  verbose=False):
+        self._init_params = {
+            "T": T,
+            "base_readout_f": base_readout_f,
+            "material": material,
+            "VL": VL,
+            "width": width,
+            "thickness": thickness,
+            "length": length,
+            "C": C,
+            "Cc": Cc,
+            "alpha_k": alpha_k,
+            "fix_Lg": fix_Lg,
+            "R_spoiler": R_spoiler,
+            "L_junk": L_junk,
+            "Tc": Tc,
+            "Popt": Popt,
+            "opt_eff": opt_eff,
+            "pb_eff": pb_eff,
+            "nu_opt": nu_opt,
+            "big_sigma_factor": big_sigma_factor,
+            "nstar": nstar,
+            "sigmaN": sigmaN,
+            "Vin": Vin,
+            "input_atten_dB": input_atten_dB,
+            "ZLNA": ZLNA,
+            "GLNA": GLNA,
+            "verbose": verbose,
+        }
+        
         self.T = T
         self.readout_f = base_readout_f
         self.Popt = Popt
@@ -36,8 +66,7 @@ class MR_complex_resonator():
         self.pb_eff = pb_eff
         self.nu_opt = nu_opt ###
         self.big_sigma_factor = big_sigma_factor #######
-        if material != 'Al':
-            raise ValueError('You must choose Al for aluminum. More options may be added in future.')
+        # if material != ']rror('You must choose Al for aluminum. More options may be added in future.')
         self.material = material
 
         self.R_spoiler = R_spoiler
@@ -62,12 +91,22 @@ class MR_complex_resonator():
             self.Tc = Tc
         if self.T >= self.Tc:
             raise ValueError('Error: cannot set operational temperature equal to transition temperature.')
-        if material == 'Al': # this is your only choice 
+        if material == 'Al': 
             self.N0 = 1.72e10 * 1.602e19 # for Al, um^-3 eV^-1 --> um^-3 J^-1
             self.tau0 = 438e-9 # s; from de Visser thesis for aluminum (characteristic electron-phonon interaction time)
+        elif material == 'TiN':
+            self.N0 = 3.9e10 * 1.609e19 # um^-3 J^-1 (Gao)
+            self.tau0 = 50e-9 # s (guess)
+            # self.Tc
+        elif material == 'NbTiN':
+            self.N0 = 1e10 * 1.602e19 # guess
+            self.tau0 = 50e-9 # s (guess)
+        elif material == 'NbN':
+            self.N0 = 1.15e10 * 1.609e19 # um^-3 J^-1 from Barends 2011
+            self.tau0 = 50e-9 # s (guess)
+
+
         self.nstar = nstar
-
-
         self.Delta0 = 1.76 * kb * self.Tc
             
         # compute initial guess at resonator dark conductances and circuit values

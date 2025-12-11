@@ -67,13 +67,17 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     carrier_params = ['carrier_freq', 'carrier_Vin', 'carrier_Vout', 'Iin']
     
     stop_flag = False
+
+    # print('in iterator:')
+    # print(len(nqp_timestream), len(carrier_freq_timestream), len(carrier_Vin_timestream))
+    # print(nqp_timestream[-1], nqp_timestream[-2])
     
     # start sweepin'
     for step in range(len(carrier_freq_timestream)):
 
         outdict[step] = {}
         if step == 0:
-            outdict[0]['resonator'] = target
+            outdict[0]['resonator'] = copy.deepcopy(target)
             if save_watcher_data:
                 outdict[0]['watcher_freq'] = watcher_freq # just save this once since it's always the same
                 
@@ -190,6 +194,7 @@ def two_resonance_iterator(target, neighbour,
                     targ_nqp_timestream=None, neigh_nqp_timestream=None,
                     save_watcher_data=True, watcher_span=300e3, Icrit=1e-3,
                     niters=150, damp=0.1, 
+                    bias_neighbour=True, neighbour_carrier_Vin=1e-5,
                     stop_when_comb_hithered=False, comb_hither_fdetune=0, comb_hither_threshold=500,
                     verbose=False):
     '''
@@ -200,6 +205,7 @@ def two_resonance_iterator(target, neighbour,
     # probe sweep parameters
     fr = target.lekid.compute_fr()
     fneigh = neighbour.lekid.compute_fr()
+    neighbour_carrier_freq = fneigh
     
     Qr, Qi, Qc = target.lekid.fit_for_Q_values()
     nominal_tau_targ = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
@@ -266,7 +272,11 @@ def two_resonance_iterator(target, neighbour,
             for param in params:
                 outdict[step][resonator][param] = {}
                 outdict[step][resonator][param]['iters'] = []
-        
+        outdict[step]['neigh']['carrier_Vin'] = neighbour_carrier_Vin
+        outdict[step]['neigh']['carrier_freq'] = neighbour_carrier_freq
+        outdict[step]['neigh']['carrier_Vout'] = {}
+        outdict[step]['neigh']['carrier_Vout']['iters'] = []
+
         # get the base impedances due to the qp population        
         # targ_nqp = target.calc_nqp()
         targ_nqp = targ_nqp_timestream[step]
@@ -280,7 +290,6 @@ def two_resonance_iterator(target, neighbour,
         neigh_sigma2 = neighbour.calc_sigma2(f=carrier_freq, nqp=neigh_nqp)
         neigh_sigma = neigh_sigma1 - 1.j*neigh_sigma2
 
-        
         
         # up to this point these should always be the same on each iter, since we are not changing nqp.
         for iiter in range(niters): # iterate at this carrier freq and Vin to steady state\
@@ -355,6 +364,13 @@ def two_resonance_iterator(target, neighbour,
             
             Vout = carrier_Vin * (Zpar / (r2 + Zpar))
             outdict[step]['carrier_Vout']['iters'].append(Vout)
+
+            # compute the output voltage at the neighbour carrier freq too
+            Ztarg_fneigh = targ_new_lekid.total_impedance(fc=neighbour_carrier_freq)
+            Zneigh_fneigh = neigh_new_lekid.total_impedance(fc=neighbour_carrier_freq)
+            Zpar_fneigh = 1./(1./ZLNA + 1./r3 + 1./Ztarg_fneigh + 1./Zneigh_fneigh)
+            Vout_fneigh = neighbour_carrier_Vin * (Zpar_fneigh / (r2 + Zpar_fneigh))
+            outdict[step]['neigh']['carrier_Vout']['iters'].append(Vout_fneigh)
             
             
         # get the whole transfer function from the "watcher" measurement
@@ -371,6 +387,7 @@ def two_resonance_iterator(target, neighbour,
                 outdict[step][resonator][param]['final'] = outdict[step][resonator][param]['iters'][-1]
         outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
         outdict[step]['Iin']['final'] = outdict[step]['Iin']['iters'][-1]
+        outdict[step]['neigh']['carrier_Vout']['final'] = outdict[step]['neigh']['carrier_Vout']['iters'][-1]
         if stop_when_comb_hithered:
             # fdetune = fc - fr --> fr = fc - fdetune
             # print('%.3e'%(abs((carrier_freq - comb_hither_fdetune) - targ_fr)))

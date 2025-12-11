@@ -22,11 +22,20 @@ def calc_Cc(C, f0, Qc, Z0=50):
 # UTILS
 #################
 
-def calc_dphase(Vout):
+# def calc_dphase(Vout, Vout0):
+#     x0, y0, R = circle_fit_pratt(Vout.real, Vout.imag)
+#     phase = np.unwrap(np.arctan2(Vout.imag-y0, Vout.real-x0))
+#     phase0 = np.arctan2(Vout0.imag-y0, Vout0.real-x0)
+#     phase_diff = phase - phase0
+#     return phase_diff
+
+def calc_dphase(Vout, Vout0):
     x0, y0, R = circle_fit_pratt(Vout.real, Vout.imag)
-    phase = np.unwrap(np.arctan2(Vout.imag-y0, Vout.real-x0))
-    phase_diff = phase - phase[0]
-    return phase_diff
+    phase0 = np.arctan2(Vout0.imag-y0, Vout0.real-x0)
+    dphase = np.arctan2(Vout.imag-y0, Vout.real-x0) - phase0
+    
+    # phase_diff = phase - phase0
+    return dphase
 
 def circle_fit_pratt(x, y):
     """
@@ -198,6 +207,19 @@ def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True, use_mean_value
         theta_best += np.pi
 
     return iqrot, theta_best 
+
+def align_carrier_with_readout_I(iqdata):
+    '''
+    
+    '''
+    theta_raw = np.arcsin(np.mean(iqdata).imag / abs(np.mean(iqdata))) ### scould this arctan instead?
+    if np.mean(iqdata).real > 0:
+        theta = -theta_raw
+        
+    else:
+        theta = theta_raw
+        
+    return iqdata * np.exp(1.j*theta), theta
 
 
 def s21_skewed(f, f0, Qr, Qcre, Qcim, A):
