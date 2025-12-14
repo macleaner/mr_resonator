@@ -58,7 +58,7 @@ class MR_complex_resonator():
             "GLNA": GLNA,
             "verbose": verbose,
         }
-        
+
         self.T = T
         self.readout_f = base_readout_f
         self.Popt = Popt
@@ -92,17 +92,17 @@ class MR_complex_resonator():
         if self.T >= self.Tc:
             raise ValueError('Error: cannot set operational temperature equal to transition temperature.')
         if material == 'Al': 
-            self.N0 = 1.72e10 * 1.602e19 # for Al, um^-3 eV^-1 --> um^-3 J^-1
+            self.N0 = 1.72e10 * (1./1.602e-19) # for Al, um^-3 eV^-1 --> um^-3 J^-1
             self.tau0 = 438e-9 # s; from de Visser thesis for aluminum (characteristic electron-phonon interaction time)
         elif material == 'TiN':
-            self.N0 = 3.9e10 * 1.609e19 # um^-3 J^-1 (Gao)
+            self.N0 = 3.9e10 * (1./1.602e-19) # um^-3 J^-1 (Gao)
             self.tau0 = 50e-9 # s (guess)
             # self.Tc
         elif material == 'NbTiN':
-            self.N0 = 1e10 * 1.602e19 # guess
+            self.N0 = 1e10 * (1./1.602e-19) # guess
             self.tau0 = 50e-9 # s (guess)
         elif material == 'NbN':
-            self.N0 = 1.15e10 * 1.609e19 # um^-3 J^-1 from Barends 2011
+            self.N0 = 1.15e10 * (1./1.602e-19) # um^-3 J^-1 from Barends 2011
             self.tau0 = 50e-9 # s (guess)
 
 
