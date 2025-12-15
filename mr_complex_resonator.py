@@ -30,34 +30,7 @@ class MR_complex_resonator():
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, sigmaN=1./(4*20e-9),
                  Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1,
                  verbose=False):
-        self._init_params = {
-            "T": T,
-            "base_readout_f": base_readout_f,
-            "material": material,
-            "VL": VL,
-            "width": width,
-            "thickness": thickness,
-            "length": length,
-            "C": C,
-            "Cc": Cc,
-            "alpha_k": alpha_k,
-            "fix_Lg": fix_Lg,
-            "R_spoiler": R_spoiler,
-            "L_junk": L_junk,
-            "Tc": Tc,
-            "Popt": Popt,
-            "opt_eff": opt_eff,
-            "pb_eff": pb_eff,
-            "nu_opt": nu_opt,
-            "big_sigma_factor": big_sigma_factor,
-            "nstar": nstar,
-            "sigmaN": sigmaN,
-            "Vin": Vin,
-            "input_atten_dB": input_atten_dB,
-            "ZLNA": ZLNA,
-            "GLNA": GLNA,
-            "verbose": verbose,
-        }
+        
 
         self.T = T
         self.readout_f = base_readout_f
@@ -66,7 +39,6 @@ class MR_complex_resonator():
         self.pb_eff = pb_eff
         self.nu_opt = nu_opt ###
         self.big_sigma_factor = big_sigma_factor #######
-        # if material != ']rror('You must choose Al for aluminum. More options may be added in future.')
         self.material = material
 
         self.R_spoiler = R_spoiler
