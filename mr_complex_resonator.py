@@ -15,6 +15,8 @@ from scipy.optimize import brentq
 
 from mr_lekid import MR_LEKID as MR_LEKID
 import utils
+import material_properties
+
 
 
 h = 6.626e-34
@@ -26,9 +28,10 @@ mu0 = 1.257e-6
 class MR_complex_resonator(): 
     
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
-                 length=None, C=0.5e-12, Cc=0.002e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, Tc=None, 
-                 Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, sigmaN=1./(4*20e-9),
-                 Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1,
+                 length=None, C=0.5e-12, Cc=0.002e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, 
+                 Tc=None, N0=None, tau0=None, Rsheet_N=None, rhoN=None, sigmaN=None,
+                 Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, 
+                 Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1, Z0=50.,
                  verbose=False):
         
 
@@ -55,28 +58,76 @@ class MR_complex_resonator():
         self.VL_um3 = VL*1e18 # in um^3; this is conventionally the units for nqp etc
         
         
-        self.sigmaN = sigmaN
+        # allow user overrides of various material properties
+        overrides = dict()
+        overrides.update({
+            "Tc": Tc,
+            "N0": N0,
+            "tau0": tau0,
+            "Rsheet_N": Rsheet_N,
+            "rhoN": rhoN,
+            "sigmaN": sigmaN,
+        })
+
+        props = material_properties.resolve_material_properties(self.material, thickness=self.thickness, overrides=overrides)
+
+        # Store base + derived results
+        self.Tc = props["Tc"]
+        self.N0 = props["N0"]
+        self.tau0 = props["tau0"]
+        self.Rsheet_N = props["Rsheet_N"]
+        self.rhoN = props["rhoN"]
+        self.sigmaN = props["sigmaN"]
+        # self.Delta = props["Delta"]
     
-        if Tc is None:
-            self.Tc = 1.2 # for Al
-        else:
-            self.Tc = Tc
+        
+        # self.Tc = None
+        # # print(Tc, self.Tc)
+        # if material == 'Al': 
+        #     self.N0 = 1.72e10 * (1./1.602e-19) # for Al, um^-3 eV^-1 --> um^-3 J^-1
+        #     self.tau0 = 438e-9 # s; from de Visser thesis for aluminum (characteristic electron-phonon interaction time)
+        #     if Tc is None:
+        #         self.Tc = 1.2 # for Al
+        #     else:
+        #         self.Tc = Tc
+                
+        # elif material == 'TiN':
+        #     self.N0 = 3.9e10 * (1./1.602e-19) # um^-3 J^-1 (Gao)
+        #     self.tau0 = 50e-9 # s (guess)
+        #     if Tc is None:
+        #         self.Tc = 12 #####
+        #     else:
+        #         self.Tc = Tc
+        # elif material == 'NbTiN':
+        #     self.N0 = 1e10 * (1./1.602e-19) # guess
+        #     self.tau0 = 50e-9 # s (guess)
+        #     if Tc is None:
+        #         self.Tc = 16 #####
+        #     else:
+        #         self.Tc = Tc
+        # elif material == 'NbN':
+        #     self.N0 = 1.15e10 * (1./1.602e-19) # um^-3 J^-1 from Barends 2011
+        #     self.tau0 = 10e-9 # approx. - including phonon trapping (Semenov 1997)
+        #     print('got material NbN', Tc, self.Tc)
+        #     if Tc is None:
+        #         self.Tc = 16
+        #     else:
+        #         self.Tc = Tc
+        # elif material == 'Nb':
+        #     ### todo! also what is the kinetic inductance
+        #     self.N0 = 3.17e10 * (1./1.602e-19) # Kaplan 1976
+        #     self.tau0 = 0.149e-9 # s (Kaplan 1976)
+        #     if Tc is None:
+        #         self.Tc = 9  # K
+        #     else:
+        #         self.Tc = Tc
+        
+        # print(Tc, self.Tc)
+
         if self.T >= self.Tc:
             raise ValueError('Error: cannot set operational temperature equal to transition temperature.')
-        if material == 'Al': 
-            self.N0 = 1.72e10 * (1./1.602e-19) # for Al, um^-3 eV^-1 --> um^-3 J^-1
-            self.tau0 = 438e-9 # s; from de Visser thesis for aluminum (characteristic electron-phonon interaction time)
-        elif material == 'TiN':
-            self.N0 = 3.9e10 * (1./1.602e-19) # um^-3 J^-1 (Gao)
-            self.tau0 = 50e-9 # s (guess)
-            # self.Tc
-        elif material == 'NbTiN':
-            self.N0 = 1e10 * (1./1.602e-19) # guess
-            self.tau0 = 50e-9 # s (guess)
-        elif material == 'NbN':
-            self.N0 = 1.15e10 * (1./1.602e-19) # um^-3 J^-1 from Barends 2011
-            self.tau0 = 50e-9 # s (guess)
-
+        # else:
+        #     self.Tc = Tc
 
         self.nstar = nstar
         self.Delta0 = 1.76 * kb * self.Tc
@@ -91,6 +142,7 @@ class MR_complex_resonator():
         self.R_initial += R_spoiler
         
         # generate dark resonator
+        self.Z0 = Z0
         self.input_atten_dB = input_atten_dB
         self.C = C
         self.Cc = Cc
@@ -102,7 +154,10 @@ class MR_complex_resonator():
             self.Lg = fix_Lg
             self.alpha_k = self.Lk_initial / (self.Lk_initial + self.Lg)
         
-        self.lekid_params_initial = dict(R=self.R_initial, Lk=self.Lk_initial, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
+        self.lekid_params_initial = dict(R=self.R_initial, Lk=self.Lk_initial, Lg=self.Lg, 
+                                        C=self.C, Cc=self.Cc, Vin=self.Vin, 
+                                        input_atten_dB=self.input_atten_dB, Z0=self.Z0,
+                                        ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
         if verbose:
             print('initial parameters:')
             print(self.lekid_params_initial)
@@ -138,7 +193,10 @@ class MR_complex_resonator():
             self.Lg = fix_Lg
             self.alpha_k = self.Lk_dark / (self.Lk_dark + self.Lg)
         
-        self.lekid_params_dark = dict(R=self.R_dark, Lk=self.Lk_dark, Lg=self.Lg, C=self.C, Cc=self.Cc, Vin=self.Vin, input_atten_dB=self.input_atten_dB, ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
+        self.lekid_params_dark = dict(R=self.R_dark, Lk=self.Lk_dark, Lg=self.Lg, 
+                                    C=self.C, Cc=self.Cc, Vin=self.Vin, 
+                                    input_atten_dB=self.input_atten_dB, Z0=self.Z0,
+                                    ZLNA=ZLNA, GLNA=GLNA, L_junk=self.L_junk)
         self.lekid = MR_LEKID(**self.lekid_params_dark, verbose=verbose)
         self.readout_f = self.lekid.compute_fr()
         if verbose:
@@ -449,6 +507,7 @@ class MR_complex_resonator():
         Delta = self.calc_Delta_gao(T)
         R = (2 * Delta)**2 / (2*self.N0 * self.tau0 * (kb * self.Tc)**3)
         tau_qp = self.calc_tau_qp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff) # I guess this should also be from the total nqp, including optically sourced...?
+        # tau_qp = self.calc_tau_qp(T=T, Popt=0, opt_eff=opt_eff, pb_eff=pb_eff) # no, by definition this is ONLY thermal
         nqp = self.calc_nqp_th(T=T)
         
         S_gth = 2 * R * self.VL_um3 * nqp**2 * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2))
@@ -509,14 +568,14 @@ class MR_complex_resonator():
     ###########
 
 
-    def est_photon_noise(self, Popt=None, nu=220e9, opt_eff=None):
+    def est_photon_noise(self, Popt=None, nu=220e9, opt_eff=None, Tsky=20):
         if Popt is None:
             Popt = self.Popt
         if opt_eff is None:
             opt_eff = self.opt_eff
         # h = 6.626e-34 # Js
         # kb = 1.38e-23 # m^2 kg / (s^2 K)
-        Tsky = 20 # K, approx black body atmosphere
+        # Tsky = 20 # K, approx black body atmosphere
         n_nu = (np.exp(h*nu / (kb * Tsky)) - 1)**(-1)  # photon occupancy
         photon_nep = np.sqrt(2*h*Popt*nu*opt_eff * (1 + opt_eff * n_nu)) # W / rtHz
         return photon_nep

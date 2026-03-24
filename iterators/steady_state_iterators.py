@@ -24,8 +24,9 @@ import utils
 def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestream,
                     nqp_timestream=None,
                     save_watcher_data=True, watcher_span=300e3, Icrit=1e-3,
-                    niters=150, damp=0.1,
-                    stop_when_comb_hithered=False, comb_hither_fdetune=0, comb_hither_threshold=500,
+                    niters=150, damp=0.1, 
+                    stop_when_comb_hithered=False, check_comb_hither_sign=False,
+                    comb_hither_fdetune=0, comb_hither_threshold=500,
                     verbose=False):
     '''
     comb_hither_fdetune: the target frequency separation between the carrier
@@ -44,6 +45,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     # nominal_tau_targ = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
     
     # we need to know the other impedances in the nearby circuit to compute the current
+    input_atten_dB = target.lekid.input_atten_dB
     r1, r2, r3 = target.lekid.get_att_vals(target.lekid.input_atten_dB)
     ZLNA = 50.
     Zatt = r3
@@ -63,7 +65,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
 
 
     outdict = {}
-    params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres']
+    params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres', 'ZRLC']
     carrier_params = ['carrier_freq', 'carrier_Vin', 'carrier_Vout', 'Iin']
     
     stop_flag = False
@@ -107,6 +109,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
         for iiter in range(niters): # iterate at this carrier freq and Vin to steady state\
             outdict[step]['Iin']['iters'].append(Iin)
             outdict[step]['targ']['Zres']['iters'].append(Ztarg)
+            outdict[step]['targ']['ZRLC']['iters'].append(targ_ZRLC)
             outdict[step]['targ']['Ires']['iters'].append(Itarg)
             outdict[step]['targ']['IL']['iters'].append(targ_IL)
             
@@ -127,7 +130,8 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
             outdict[step]['targ']['Lk_Isq']['iters'].append(targ_Lk)
             
             # generate new lekid with these params
-            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, C=target.C, Cc=target.Cc, Vin=carrier_Vin)
+            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, 
+                C=target.C, Cc=target.Cc, Vin=carrier_Vin, input_atten_dB=input_atten_dB)
             targ_new_lekid = MR_LEKID(**targ_lekid_params)
             targ_fr = targ_new_lekid.compute_fr()
             outdict[step]['targ']['fr']['iters'].append(targ_fr)
@@ -164,10 +168,16 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
         
         if stop_when_comb_hithered:
             # fdetune = fc - fr --> fr = fc - fdetune
-            # print('%.3e'%(abs((carrier_freq - comb_hither_fdetune) - targ_fr)))
-            if abs((carrier_freq - comb_hither_fdetune) - targ_fr) < comb_hither_threshold:
-            # if abs((carrier_freq - targ_fr) - comb_hither_fdetune) < comb_hither_threshold:
-                stop_flag = True
+
+
+            if abs((carrier_freq - comb_hither_fdetune) - targ_fr) < abs(comb_hither_threshold):
+                if check_comb_hither_sign:
+                    if np.sign((carrier_freq - comb_hither_fdetune) - targ_fr) == np.sign(comb_hither_threshold):
+                        stop_flag = True
+                    # else:
+                    #     stop_flag = False
+                else:
+                    stop_flag = True
                 # print('Comb hither! stopping at step %d'%step)
 
         if stop_flag:
@@ -328,10 +338,14 @@ def two_resonance_iterator(target, neighbour,
             outdict[step]['neigh']['Lk_Isq']['iters'].append(neigh_Lk)
             
             # generate new lekid with these params
-            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, C=target.C, Cc=target.Cc, Vin=carrier_Vin)
+            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, 
+                    C=target.C, Cc=target.Cc, Vin=carrier_Vin, 
+                    input_atten_dB=target.input_atten_dB)
             targ_new_lekid = MR_LEKID(**targ_lekid_params)
             
-            neigh_lekid_params = dict(R=neigh_R, Lk=neigh_Lk, Lg=neighbour.Lg, C=neighbour.C, Cc=neighbour.Cc, Vin=carrier_Vin)
+            neigh_lekid_params = dict(R=neigh_R, Lk=neigh_Lk, Lg=neighbour.Lg,
+                    C=neighbour.C, Cc=neighbour.Cc, 
+                    Vin=carrier_Vin, input_atten_dB=neighbour.input_atten_dB)
             neigh_new_lekid = MR_LEKID(**neigh_lekid_params)
             
             # compute impedances and current for next iter
@@ -418,8 +432,11 @@ def two_resonance_iterator(target, neighbour,
 
 def set_up_for_feedback(res, foffset=-30e3, 
                       carrier_Vin_timestream=np.linspace(10e-5, 50e-6, 100),
-                        fdetune=0, comb_hither_threshold=50., 
-                        gather_calsamps=True, make_plots=False):
+                        fdetune=0, comb_hither_threshold=50., Icrit=1e-3,
+                        gather_calsamps=True, 
+                        calsamps_nqp_amplitude=0.001, n_calsamps=30,
+                        make_plots=False,
+                        return_all=False):
     
 
     fr0 = res.lekid.compute_fr()
@@ -430,7 +447,7 @@ def set_up_for_feedback(res, foffset=-30e3,
     exploratory_outdict = single_resonance_iterator(res=res, carrier_freq_timestream=carrier_freq_timestream, 
                                                  carrier_Vin_timestream=carrier_Vin_timestream,
                                                 nqp_timestream=None,
-                                                niters=200, damp=0.1,
+                                                niters=200, damp=0.1, Icrit=Icrit,
                                                 stop_when_comb_hithered=False, comb_hither_fdetune=fdetune,
                                                  comb_hither_threshold=comb_hither_threshold)
     
@@ -472,7 +489,7 @@ def set_up_for_feedback(res, foffset=-30e3,
     outdict = single_resonance_iterator(res=res, carrier_freq_timestream=carrier_freq_timestream, 
                                                  carrier_Vin_timestream=targeted_Vin_timestream,
                                                 nqp_timestream=None,
-                                                niters=200, damp=0.1,
+                                                niters=200, damp=0.1, Icrit=Icrit,
                                                 stop_when_comb_hithered=True,
                                                 comb_hither_fdetune=fdetune,
                                                  comb_hither_threshold=comb_hither_threshold)
@@ -486,14 +503,15 @@ def set_up_for_feedback(res, foffset=-30e3,
     Vin_setpoint = outdict[steps[-1]]['carrier_Vin']
     watcher_Vout = outdict[steps[-1]]['watcher_Vout']
     nqp = comb_hithered_resonator.calc_nqp()
-    nqp_timestream = np.random.normal(nqp, nqp*0.001, 30)
-    print(np.mean(nqp_timestream), np.std(nqp_timestream))
+    nqp_timestream = np.random.normal(nqp, nqp*calsamps_nqp_amplitude, n_calsamps)
+    # print(np.mean(nqp_timestream), np.std(nqp_timestream))
     carrier_Vin_timestream = Vin_setpoint * np.ones(len(nqp_timestream))
     carrier_freq_timestream = carrier_freq * np.ones(len(nqp_timestream))
     outdict_calsamps = single_resonance_iterator(res=comb_hithered_resonator, 
                                                  carrier_freq_timestream=carrier_freq_timestream, 
                                                  carrier_Vin_timestream=carrier_Vin_timestream,
-                                                nqp_timestream=nqp_timestream)
+                                                nqp_timestream=nqp_timestream,
+                                                 Icrit=Icrit)
     
 
     
@@ -531,7 +549,7 @@ def set_up_for_feedback(res, foffset=-30e3,
 
         axarr[2].plot(carrier_Vin, fsep, '--', label='targeted')
         axarr[2].axhline(0, label='$f_{carrier}$')
-        axarr[2].axhline(fdetune*1e-3, linestyle='--', label='$f_{offset}$')
+        axarr[2].axhline(fdetune*1e-3, linestyle='--', label='$f_{detune}$')
         axarr[2].set_ylabel('$f_{carrier} - f_r$ [kHz]')
 
         # axarr[3].plot(steps, Lk, label='Lk')
@@ -552,7 +570,7 @@ def set_up_for_feedback(res, foffset=-30e3,
         axarr[1].scatter(carrier_Vout.real, carrier_Vout.imag, alpha=0.7)
         axarr[1].scatter(Vout_setpoint.real, Vout_setpoint.imag, marker='*', s=250, label='setpoint')
         axarr[1].set_ylabel('calsamps Q')
-        axarr[1].set_ylabel('calsamps I')
+        axarr[1].set_xlabel('calsamps I')
         utils.square_axes(axarr[1])
 
     calsamps = carrier_Vout
@@ -566,8 +584,10 @@ def set_up_for_feedback(res, foffset=-30e3,
         fig.tight_layout()
 
         
-
-    return outdict[steps[-1]], calsamps
+    if return_all:
+        return exploratory_outdict, outdict, outdict_calsamps
+    else:
+        return outdict[steps[-1]], calsamps
 
 
 

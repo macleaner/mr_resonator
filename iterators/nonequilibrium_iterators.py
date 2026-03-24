@@ -89,7 +89,8 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         carrier_freq = carrier_freq_timestream[step]
         nqp = nqp_timestream[step]
         outdict[step] = {}
-        if step == 0:
+        # if step == 0:
+        if step < 2:
             outdict[step]['resonator'] = copy.deepcopy(res)
             if save_watcher_data:
                 outdict[step]['watcher_freq'] = watcher_frange
@@ -116,7 +117,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict[step]['Lk'] = Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
+        # lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
+        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, 
+                C=res.C, Cc=res.Cc, Vin=Vin, input_atten_dB=res.input_atten_dB)
         new_lekid = MR_LEKID(**lekid_params)
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict[step]['fr0'] = fr0
@@ -131,7 +134,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
+        # lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
+        lekid_params = dict(R=R, Lk=Lk, Lg=res.Lg, 
+                C=res.C, Cc=res.Cc, Vin=Vin, input_atten_dB=res.input_atten_dB)
         new_lekid = MR_LEKID(**lekid_params)
         Vout = new_lekid.compute_Vout(carrier_freq) ###
         

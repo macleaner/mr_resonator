@@ -19,7 +19,9 @@ class MR_LEKID():
     
     def __init__(self,  C=1e-12, R=1e-6, Cc=5e-15, Lk=1e-9, Lg=None, alpha_k=0.5, L_junk=0,
                  Qi=None, Qc=None, Vin=None, fr_presign2=-1, 
-                 system_termination=50., input_atten_dB=20, ZLNA=complex(50.,0), GLNA=1., name='LR SERIES',
+                 system_termination=50., input_atten_dB=20, 
+                 Z0=50., ZLNA=complex(50.,0), GLNA=1., 
+                 name='LR SERIES',
                 LNA_noise_temperature=6, plot_response=False, verbose=False):
 
         self._init_params = {
@@ -37,6 +39,7 @@ class MR_LEKID():
             "system_termination": system_termination,
             "input_atten_dB": input_atten_dB,
             "ZLNA": ZLNA,
+            "Z0": Z0,
             "GLNA": GLNA,
         }
 
@@ -62,6 +65,7 @@ class MR_LEKID():
         self.input_atten_dB = input_atten_dB
         self.ZLNA = ZLNA
         self.GLNA = GLNA # LNA gain
+        self.Z0 = Z0 # characteristic transmission line impedance
         if Vin is None:
             self.Vin = 1e-5 # arbitrary choice
         else:
@@ -358,14 +362,20 @@ class MR_LEKID():
         return result
 
 
-    def compute_Qc(self, Z0=50):
+    def compute_Qc(self, Z0=None):
         '''
         From McCarrick thesis
         
         Z0 is the characteristic impedance of the feedline
         '''
+        if Z0 is None:
+            Z0 = self.Z0
+
         fr = self.compute_fr()
-        Qc = (8 * self.C) / (self.Cc**2 * (2 * np.pi * fr * Z0) )
+        # print('computing Qc!')
+        # Qc = (8 * self.C) / (self.Cc**2 * (2 * np.pi * fr * Z0) ) # thus it was written
+        Qc = (2 * self.C) / (self.Cc**2 * (2 * np.pi * fr * Z0) ) # but I think thus is the correct expression
+        
         return Qc
 
     def compute_Qi(self):
@@ -374,25 +384,20 @@ class MR_LEKID():
         '''
         fr = self.compute_fr()
         L = self.Lk + self.Lg
-        Qr = np.pi * fr *2 * L / self.R
-        return Qr
+        Qi = np.pi * fr *2 * L / self.R
+        return Qi
 
-    # def compute_Qi(self):
-
-    #     Qr = self.compute_Qr()
-    #     Qc = self.compute_Qc()
-    #     Qi = 1./(1./Qr - 1./Qc)
-    #     return Qi
     def compute_Qr(self):
         Qi = self.compute_Qi()
         Qc = self.compute_Qc()
         Qr = 1./(1./Qi + 1./Qc)
         return Qr
 
-    def compute_Q_values(self):
+    def compute_Q_values(self, Z0=None):
+
         Qr = self.compute_Qr()
         Qi = self.compute_Qi()
-        Qc = self.compute_Qc()
+        Qc = self.compute_Qc(Z0=Z0)
         return Qr, Qi, Qc
 
     def fit_for_Q_values(self, span=300e3, npts=1000):

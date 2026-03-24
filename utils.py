@@ -29,6 +29,15 @@ def calc_Cc(C, f0, Qc, Z0=50):
 #     phase_diff = phase - phase0
 #     return phase_diff
 
+
+def calc_dphase_from_ref_point(Vout, Vout_ref, x0, y0):
+#     x0, y0, R = utils.circle_fit_pratt(Vout0.real, Vout0.imag) ### the two ref arrays need the same centre
+    phase0 = np.arctan2(Vout_ref.imag-y0, Vout_ref.real-x0)
+    dphase = np.arctan2(Vout.imag-y0, Vout.real-x0) - phase0
+    
+    # phase_diff = phase - phase0
+    return dphase
+
 def calc_dphase(Vout, Vout0):
     x0, y0, R = circle_fit_pratt(Vout.real, Vout.imag)
     phase0 = np.arctan2(Vout0.imag-y0, Vout0.real-x0)
