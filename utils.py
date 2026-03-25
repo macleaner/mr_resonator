@@ -376,6 +376,47 @@ def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, rbw, b
 
 
 
+def make_timestream_from_spectral_density(frequencies, spectral_density, baseline_value):
+    '''
+    using the GR noise nqp power spectral density, create a timestream of
+    nqp values that corresponds to this spectrum.
+
+    Parameters:
+    -----------
+    fs : sampling rate
+
+    N : (int) number of samples
+    '''
+
+    # if baseline_nqp is None:
+    #     baseline_nqp = res.calc_nqp()
+    # baseline_Nqp = baseline_nqp * res.VL_um3
+    
+    fs = max(frequencies) * 2
+    N = len(frequencies)
+    rbw = fs / N
+
+    # frequencies = np.fft.fftfreq(N, d=1./fs)
+    # frequencies, SN = self.calc_gr_PSD(frange=frequencies)
+    # SN = Nqp_spectrum
+
+    power_spectrum = spectral_density * rbw
+    amplitude_spectrum = np.asarray(np.sqrt(power_spectrum), dtype=complex)
+
+    random_phase_angles = np.random.rand(len(power_spectrum)) * 2*np.pi
+    random_phases = np.exp(1.j*random_phase_angles)
+    amplitude_spectrum *= random_phases
+
+    dc_index = abs(frequencies).argmin()
+    amplitude_spectrum[dc_index] = baseline_value # the average value is the baseline population
+
+    timestream = np.fft.ifft(amplitude_spectrum).real * len(spectral_density)
+    
+    return timestream
+
+
+
+
 
 
 

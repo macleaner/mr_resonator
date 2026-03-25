@@ -81,47 +81,6 @@ class MR_complex_resonator():
         # self.Delta = props["Delta"]
     
         
-        # self.Tc = None
-        # # print(Tc, self.Tc)
-        # if material == 'Al': 
-        #     self.N0 = 1.72e10 * (1./1.602e-19) # for Al, um^-3 eV^-1 --> um^-3 J^-1
-        #     self.tau0 = 438e-9 # s; from de Visser thesis for aluminum (characteristic electron-phonon interaction time)
-        #     if Tc is None:
-        #         self.Tc = 1.2 # for Al
-        #     else:
-        #         self.Tc = Tc
-                
-        # elif material == 'TiN':
-        #     self.N0 = 3.9e10 * (1./1.602e-19) # um^-3 J^-1 (Gao)
-        #     self.tau0 = 50e-9 # s (guess)
-        #     if Tc is None:
-        #         self.Tc = 12 #####
-        #     else:
-        #         self.Tc = Tc
-        # elif material == 'NbTiN':
-        #     self.N0 = 1e10 * (1./1.602e-19) # guess
-        #     self.tau0 = 50e-9 # s (guess)
-        #     if Tc is None:
-        #         self.Tc = 16 #####
-        #     else:
-        #         self.Tc = Tc
-        # elif material == 'NbN':
-        #     self.N0 = 1.15e10 * (1./1.602e-19) # um^-3 J^-1 from Barends 2011
-        #     self.tau0 = 10e-9 # approx. - including phonon trapping (Semenov 1997)
-        #     print('got material NbN', Tc, self.Tc)
-        #     if Tc is None:
-        #         self.Tc = 16
-        #     else:
-        #         self.Tc = Tc
-        # elif material == 'Nb':
-        #     ### todo! also what is the kinetic inductance
-        #     self.N0 = 3.17e10 * (1./1.602e-19) # Kaplan 1976
-        #     self.tau0 = 0.149e-9 # s (Kaplan 1976)
-        #     if Tc is None:
-        #         self.Tc = 9  # K
-        #     else:
-        #         self.Tc = Tc
-        
         # print(Tc, self.Tc)
 
         if self.T >= self.Tc:

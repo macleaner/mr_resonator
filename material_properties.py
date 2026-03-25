@@ -11,6 +11,18 @@ MATERIAL_DEFAULTS = {
         "Tc": 1.2,                  # K
         "Rsheet_N": 0.66,           # ohm/sq
     },
+    "Al_SLIM_30nm": {
+        "N0": 1.72e10 / E_CHARGE,   # um^-3 J^-1 Gao thesis
+        "tau0": 438e-9,             # s (Kaplan 1976)
+        "Tc": 1.2,                  # K
+        "Rsheet_N": 0.66,           # ohm/sq (T Cecil measured)
+    },
+    "Al_SLIM_50nm": {
+        "N0": 1.72e10 / E_CHARGE,   # um^-3 J^-1 Gao thesis
+        "tau0": 438e-9,             # s (Kaplan 1976)
+        "Tc": 1.2,                  # K
+        "Rsheet_N": 0.25,           # ohm/sq (T Cecil measured)
+    },
     "TiN_sub_superspec": {
         "N0": 3.9e10 / E_CHARGE, # Gao 2012 ***
         "tau0": 88e-9, # Kardakova 2013
