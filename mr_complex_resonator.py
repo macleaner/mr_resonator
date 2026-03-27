@@ -1,8 +1,26 @@
 '''
-kinetic inductance detector modeling
+KID resonator model with superconducting physics.
+
+This module provides the MR_complex_resonator class, which bridges
+superconducting physics to the lumped-element circuit model of a kinetic
+inductance detector. Given the geometry and material properties of the
+superconducting inductor, it computes the Mattis-Bardeen complex conductivity,
+derives the surface impedance, and extracts the kinetic inductance and real
+impedance needed to instantiate an MR_LEKID circuit model.
+
+On top of the circuit-level calculations provided by MR_LEKID, this class
+handles all quasiparticle population physics: thermal and optically-sourced
+quasiparticle densities, quasiparticle lifetimes, generation-recombination
+noise power spectral densities, and photon noise estimates. Together, these
+allow end-to-end simulation of detector response and noise, from absorbed
+optical power to output carrier voltage.
+
+The overall modeling approach is described in Chapters 2 and 3 of Rouble
+(2025), with the key flow illustrated in Figs. 3.7-3.9.
+
+Link to thesis download: https://escholarship.mcgill.ca/concern/theses/nz806589w?locale=en
 
 Maclean Rouble
-
 maclean.rouble@mail.mcgill.ca
 '''
 
@@ -26,6 +44,65 @@ mu0 = 1.257e-6
 
 
 class MR_complex_resonator(): 
+    '''
+    KID resonator model connecting superconducting physics to a lumped-element
+    circuit.
+
+    In a KID, the sensing element is a superconducting inductor whose kinetic
+    inductance and real impedance change when Cooper pairs are broken by
+    absorbed photons, altering the quasiparticle population. This class
+    computes those changes — starting from the Mattis-Bardeen complex
+    conductivity — and propagates them through a lumped-element circuit model
+    (MR_LEKID) to predict the measurable output carrier voltage.
+
+    The key chain is (see Fig. 3.8 of Rouble (2025)):
+
+        P_opt  -->  n_qp  -->  sigma (Mattis-Bardeen)
+               -->  Z_s   -->  R, L_k  -->  V_out
+
+    On instantiation, the class:
+    1. Computes the thermal + optical quasiparticle density n_qp.
+    2. Evaluates the Mattis-Bardeen complex conductivity (sigma1, sigma2).
+    3. Derives the surface impedance Z_s, and from it the kinetic inductance
+       L_k and real impedance R of the inductor.
+    4. Instantiates an MR_LEKID with these values (available as self.lekid).
+
+    The resulting MR_LEKID instance (self.lekid) can be used directly to
+    compute transfer functions, resonant frequencies, and quality factors.
+    The noise and responsivity methods of this class then use the same
+    underlying physics to predict the expected detector noise.
+
+    Reference: Rouble (2025), Chapters 2 and 3. Material properties follow
+    Gao (2008) (Ph.D. thesis, Caltech).
+
+    Parameters
+    ----------
+    See __init__ for full parameter descriptions.
+
+    Usage
+    -----
+    Instantiate a resonator and compute its transfer function::
+
+        res = MR_complex_resonator(T=0.12, material='Al',
+                                   length=8.33e-3, width=2e-6, thickness=30e-9,
+                                   C=0.5e-12, Cc=5e-15, alpha_k=0.3,
+                                   Popt=2.5e-15, Vin=1e-4, input_atten_dB=20)
+        fr = res.readout_f
+        frange = np.linspace(fr - 500e3, fr + 500e3, 1000)
+        Vout = res.lekid.compute_Vout(frange)
+
+    Compute the GR noise PSD and photon noise::
+
+        frange, S_N = res.calc_gr_PSD_thermal_optical()
+        nep_photon = res.est_photon_noise()
+
+    Propagate a quasiparticle density timestream to a voltage timestream::
+
+        frange_gr, S_N = res.calc_gr_PSD()
+        nqp_ts = utils.make_nqp_timestream(frange_gr, S_N, fs=1e4, N=int(1e5))
+        Vout_ts = res.make_carrier_Vout_timestream_for_nqp_timestream(
+                      nqp_timestream=nqp_ts, carrier_freq=fr)
+    '''
     
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
                  length=None, C=0.5e-12, Cc=0.002e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, 
@@ -33,6 +110,108 @@ class MR_complex_resonator():
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, 
                  Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1, Z0=50.,
                  verbose=False):
+        '''
+        Parameters
+        ----------
+        Superconductor geometry
+        -----------------------
+        width : float
+            Inductor linewidth [m]. Default 2e-6.
+        thickness : float
+            Inductor film thickness [m]. Default 30e-9.
+        length : float or None
+            Inductor length [m]. If provided, VL is computed from the geometry.
+            If None, length is inferred from VL. Default None.
+        VL : float
+            Active inductor volume [m^3]. Used only if length is None.
+            Default 540e-18 (= 9000 um^3).
+
+        Material properties
+        -------------------
+        material : str
+            Superconductor material. Currently 'Al' is supported. Material
+            properties (Tc, N0, tau0, sigmaN, etc.) are looked up from
+            material_properties.py. Default 'Al'.
+        Tc : float or None
+            Critical temperature [K]. Overrides the material database value
+            if provided. Default None.
+        N0 : float or None
+            Single-spin density of states [um^-3 J^-1]. Overrides the
+            material database value if provided. Default None.
+        tau0 : float or None
+            Characteristic quasiparticle recombination time [s]. Overrides
+            the material database value if provided. Default None.
+        Rsheet_N : float or None
+            Normal-state sheet resistance [Ohm/sq]. Overrides the material
+            database value if provided. Default None.
+        rhoN : float or None
+            Normal-state resistivity [Ohm m]. Overrides the material database
+            value if provided. Default None.
+        sigmaN : float or None
+            Normal-state conductivity [(Ohm m)^-1]. Overrides the material
+            database value if provided. Default None.
+
+        Resonator circuit parameters
+        ----------------------------
+        C : float
+            Resonator shunt capacitance [F]. Default 0.5e-12.
+        Cc : float
+            Coupling capacitance [F]. Default 0.002e-12.
+        alpha_k : float
+            Kinetic inductance fraction, L_k / (L_k + L_g). Used to set the
+            geometric inductance L_g from the computed L_k. Ignored if
+            fix_Lg is provided. Default 0.5.
+        fix_Lg : float or None
+            If provided, fixes the geometric inductance to this value [H]
+            rather than inferring it from alpha_k. Default None.
+        R_spoiler : float
+            Additional real impedance added to R [Ohm], for modeling excess
+            dissipation. Default 0.
+        L_junk : float
+            Parasitic series inductance passed to MR_LEKID [H]. Default 0.
+
+        Readout circuit parameters
+        --------------------------
+        Vin : float
+            Input carrier amplitude [V] before the last-stage attenuator.
+            Default 0.15e-3.
+        input_atten_dB : float
+            Last-stage attenuator value [dB]. Default 20.
+        ZLNA : complex
+            LNA input impedance [Ohm]. Default 50.
+        GLNA : float
+            LNA voltage gain [V/V]. Default 1.
+        Z0 : float
+            Characteristic transmission line impedance [Ohm]. Default 50.
+        base_readout_f : float
+            Initial guess for the readout frequency [Hz]. On instantiation,
+            this is refined to the computed resonant frequency. Default 1e9.
+
+        Optical loading and quasiparticle parameters
+        --------------------------------------------
+        T : float
+            Operating temperature [K]. Must be less than Tc. Default 0.12.
+        Popt : float
+            Absorbed pair-breaking optical power [W]. Default 1e-18.
+        opt_eff : float
+            Optical absorption efficiency, eta_opt <= 1. Default 0.5.
+        pb_eff : float
+            Pair-breaking efficiency, eta_pb <= 1. Default 0.7.
+        nu_opt : float
+            Optical photon frequency [Hz], used for photon noise estimates.
+            Default 150e9.
+        nstar : float
+            Effective additional quasiparticle density [um^-3], representing
+            a population floor (e.g., from stray pair breaking). Default 0.
+
+        Other
+        -----
+        big_sigma_factor : float
+            Scaling factor for the Goldie-Withington Sigma parameter.
+            Default 1e-4.
+        verbose : bool
+            If True, print circuit parameters on instantiation. Default False.
+        '''
         
 
         self.T = T
@@ -78,15 +257,9 @@ class MR_complex_resonator():
         self.Rsheet_N = props["Rsheet_N"]
         self.rhoN = props["rhoN"]
         self.sigmaN = props["sigmaN"]
-        # self.Delta = props["Delta"]
-    
-        
-        # print(Tc, self.Tc)
 
         if self.T >= self.Tc:
             raise ValueError('Error: cannot set operational temperature equal to transition temperature.')
-        # else:
-        #     self.Tc = Tc
 
         self.nstar = nstar
         self.Delta0 = 1.76 * kb * self.Tc
@@ -127,7 +300,6 @@ class MR_complex_resonator():
             if verbose:
                 print('Warning: initial Lk guess is negative.')
         else:
-#             self.readout_f = 1./np.sqrt(2*np.pi*(self.Lk_dark + self.Lg) * self.C)
             self.readout_f = self.lekid_initial.compute_fr()
             if verbose:
                 print('base readout f: %.4e; readout f now: %.4e'%(base_readout_f, self.readout_f))
@@ -163,21 +335,35 @@ class MR_complex_resonator():
 
     
 
-    def calc_Zs(self, f, sigma, thickness=None):#, sigma2=None):
+    def calc_Zs(self, f, sigma, thickness=None):
         '''
-        compute complex surface impedance from complex conductance
-        expression from Henkels&Kircher 1977, via de Visser thesis eq 2.20
+        Compute the complex surface impedance from the complex conductivity.
 
-        params:
+        Uses the thin-film, local-limit expression (Eq. 2.5 of Rouble (2025),
+        following Henkels & Kircher 1977):
+
+            Z_s = sqrt(j 2 pi f mu0 / sigma) / tanh(t * sqrt(j 2 pi f mu0 sigma))
+
+        This expression is valid when the film thickness is comparable to or
+        smaller than the London penetration depth.
+
+        Parameters
+        ----------
+        f : float or array
+            Frequency at which to evaluate Z_s [Hz].
+        sigma : complex or array of complex
+            Complex conductivity, sigma1 - j*sigma2 [(Ohm m)^-1].
+        thickness : float or None
+            Film thickness [m]. Uses self.thickness if None.
+
+        Returns
         -------
-        f : frequency
-        sigma : complex conductance = sigma1 - 1.j*sigma2
-
+        complex or array of complex
+            Complex surface impedance Z_s [Ohm/sq].
         '''
 
         if thickness is None:
             thickness = self.thickness
-#         print(thickness)
         root1 = (1.j*2*np.pi*f*mu0)/sigma
         cotharg = thickness * np.sqrt(1.j*2*np.pi*f*mu0*sigma)
         Zs = np.sqrt(root1) * 1./np.tanh(cotharg)
@@ -185,7 +371,21 @@ class MR_complex_resonator():
 
     def calc_Rs_Ls(self, f, Zs):
         '''
-        from the complex surface impedance, compute the SURFACE resistance and indutance
+        Extract the surface resistance and surface inductance from Z_s.
+
+        Parameters
+        ----------
+        f : float or array
+            Frequency [Hz].
+        Zs : complex or array of complex
+            Complex surface impedance [Ohm/sq].
+
+        Returns
+        -------
+        Rs : float or array
+            Surface resistance [Ohm/sq].
+        Ls : float or array
+            Surface inductance [H/sq].
         '''
         Rs = Zs.real 
         Ls = Zs.imag / (2*np.pi*f)
@@ -193,7 +393,30 @@ class MR_complex_resonator():
 
     def calc_R_L(self, f, Zs):
         '''
-        from the complex surface impedance, compute the total resistance and kinetic inductance
+        Compute the total inductor resistance R and kinetic inductance L_k
+        from the surface impedance and inductor geometry.
+
+        Scales the surface impedance by the length-to-width ratio of the
+        inductor (Eqs. 3.1-3.2 of Rouble (2025)):
+
+            L_k = Im{Z_s} / (2 pi f) * (l / w)
+            R   = Re{Z_s} * (l / w)
+
+        Note: R_spoiler is added separately in __init__ after this call.
+
+        Parameters
+        ----------
+        f : float or array
+            Frequency [Hz].
+        Zs : complex or array of complex
+            Complex surface impedance [Ohm/sq].
+
+        Returns
+        -------
+        R : float or array
+            Inductor real impedance [Ohm].
+        L : float or array
+            Kinetic inductance [H].
         '''
         R = (Zs.real ) * (self.length / self.width) + self.R_spoiler
         L = (Zs.imag / (2*np.pi*f)) * (self.length / self.width)
@@ -207,14 +430,65 @@ class MR_complex_resonator():
     #################################################
 
     def zeta(self, f, T):
+        '''
+        Compute the dimensionless frequency parameter zeta = h*f / (2 k_B T).
+
+        This appears in the Gao (2008) approximations for the Mattis-Bardeen
+        conductivity (Eqs. 2.13-2.14 of Rouble (2025)).
+
+        Parameters
+        ----------
+        f : float or array
+            Frequency [Hz].
+        T : float
+            Temperature [K].
+
+        Returns
+        -------
+        float or array
+            Dimensionless frequency parameter zeta.
+        '''
         return h * f / (2 * kb * T)
     
 
     def calc_sigma1(self, f=None, nqp=None, T=None, Popt=None, pb_eff=None, opt_eff=None):
         '''
-        complex conductance as function of quasiparticle density AND temperature (ie, to account for
-        the presence of optically sourced quasiparticles as well as thermal equilibrium populations.
-        From Gao, eq 2.96-2.97
+        Compute the real part of the Mattis-Bardeen complex conductivity.
+
+        Uses the Gao (2008) approximate analytic expression (Eq. 2.13 of
+        Rouble (2025)), which treats the quasiparticle density n_qp and
+        temperature T as independent variables:
+
+            sigma1 = sigmaN * (2 Delta0 / hf) * (nqp / (N0 sqrt(2 pi kB T Delta0)))
+                     * sinh(zeta) * K0(zeta)
+
+        where zeta = hf / (2 kB T) and K0 is the zeroth-order modified Bessel
+        function of the second kind.
+
+        sigma1 represents the dissipative (real) response of the
+        superconductor. It increases with quasiparticle density and decreases
+        at lower temperatures and lower readout frequencies.
+
+        Parameters
+        ----------
+        f : float or array or None
+            Readout frequency [Hz]. Uses self.readout_f if None.
+        nqp : float or array or None
+            Quasiparticle number density [um^-3]. Computed from T and Popt
+            if None.
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        pb_eff : float or None
+            Pair-breaking efficiency. Uses self.pb_eff if None.
+        opt_eff : float or None
+            Optical absorption efficiency. Uses self.opt_eff if None.
+
+        Returns
+        -------
+        float or array
+            sigma1 [(Ohm m)^-1].
         '''
 
         if f is None:
@@ -241,9 +515,42 @@ class MR_complex_resonator():
     
     def calc_sigma2(self, f=None, nqp=None, T=None, Popt=None, pb_eff=None, opt_eff=None):
         '''
-        complex conductance as function of quasiparticle density AND temperature (ie, to account for
-        the presence of optically sourced quasiparticles as well as thermal equilibrium populations.
-        From Gao, eq 2.96-2.97
+        Compute the imaginary part of the Mattis-Bardeen complex conductivity.
+
+        Uses the Gao (2008) approximate analytic expression (Eq. 2.14 of
+        Rouble (2025)):
+
+            sigma2 = sigmaN * (pi Delta0 / hf)
+                     * [1 - (nqp / (2 N0 Delta0)) * (1 + sqrt(2 Delta0 / pi kB T) * e^{-zeta} I0(zeta))]
+
+        where I0 is the zeroth-order modified Bessel function of the first kind.
+
+        sigma2 determines the kinetic inductance of the superconductor via the
+        surface impedance. It decreases as n_qp increases (more quasiparticles
+        suppress the superfluid density, increasing L_k). At low readout
+        frequencies, the reactive response dominates over the dissipative one,
+        which makes KIDs most sensitive in this regime (see Fig. 2.2).
+
+        Parameters
+        ----------
+        f : float or array or None
+            Readout frequency [Hz]. Uses self.readout_f if None.
+        nqp : float or array or None
+            Quasiparticle number density [um^-3]. Computed from T and Popt
+            if None.
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        pb_eff : float or None
+            Pair-breaking efficiency. Uses self.pb_eff if None.
+        opt_eff : float or None
+            Optical absorption efficiency. Uses self.opt_eff if None.
+
+        Returns
+        -------
+        float or array
+            sigma2 [(Ohm m)^-1].
         '''
 
         if f is None:
@@ -272,13 +579,20 @@ class MR_complex_resonator():
     
     def calc_zeroT_sigma2(self, f):
         '''
-        zero temperature value for imaginary component of conductance
-        real part of complex conductance is 0 at T=0
+        Compute the zero-temperature limit of sigma2.
 
-        params
-        ------
-        f : frequency
+        At T = 0, sigma1 = 0 (no dissipation) and sigma2 approaches a
+        frequency-dependent limit set by the gap energy Delta0.
 
+        Parameters
+        ----------
+        f : float or array
+            Frequency [Hz].
+
+        Returns
+        -------
+        float or array
+            sigma2 at T = 0 [(Ohm m)^-1].
         '''
 
         Delta0 = self.Delta0
@@ -294,6 +608,37 @@ class MR_complex_resonator():
     ######################################
         
     def calc_nqp(self, T=None, Popt=None, opt_eff=None, pb_eff=None):
+        '''
+        Compute the steady-state quasiparticle number density.
+
+        Solves the steady-state rate equation (Eq. 2.17 of Rouble (2025))
+        balancing thermal generation, optical pair-breaking, and
+        recombination:
+
+            n_qp = sqrt(n_th^2 + Gamma_g,opt / R) - n_star
+
+        where R = (2 Delta)^2 / (2 N0 tau0 (kB Tc)^3) is the recombination
+        constant, Gamma_g,opt = eta_pb * eta_opt * P_opt / (Delta * V_L)
+        is the optical generation rate per unit volume, and n_th is the
+        thermal quasiparticle density (Eq. 2.22). The nstar parameter
+        represents an additional population floor.
+
+        Parameters
+        ----------
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+        Popt : float or None
+            Absorbed pair-breaking optical power [W]. Uses self.Popt if None.
+        opt_eff : float or None
+            Optical absorption efficiency eta_opt. Uses self.opt_eff if None.
+        pb_eff : float or None
+            Pair-breaking efficiency eta_pb. Uses self.pb_eff if None.
+
+        Returns
+        -------
+        float or array
+            Steady-state quasiparticle number density n_qp [um^-3].
+        '''
         
         if T is None:
             T = self.T
@@ -316,7 +661,25 @@ class MR_complex_resonator():
 
     def calc_nqp_th(self, T=None):
         '''
-        compute quasiparticle number density at temperature T
+        Compute the thermal equilibrium quasiparticle number density.
+
+        Uses the low-temperature approximation (Eq. 2.22 of Rouble (2025),
+        valid for kB T << Delta):
+
+            n_th = 2 N0 sqrt(2 pi kB T Delta) * exp(-Delta / kB T)
+
+        This is the quasiparticle population in the absence of any
+        pair-breaking optical load.
+
+        Parameters
+        ----------
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+
+        Returns
+        -------
+        float
+            Thermal quasiparticle number density n_th [um^-3].
         '''
 
         if T is None:
@@ -330,7 +693,35 @@ class MR_complex_resonator():
 
     def calc_tau_qp(self, T=None, Popt=None, opt_eff=None, pb_eff=None, nqp=None):
         '''
-        compute the quasiparticle lifetime 
+        Compute the quasiparticle lifetime tau_qp.
+
+        The quasiparticle lifetime is set by the recombination constant R and
+        the total quasiparticle density:
+
+            tau_qp = (N0 (kB Tc)^3) / (2 Delta^2 R nqp)
+                   = tau0 N0 (kB Tc)^3 / (2 Delta^2 nqp)
+
+        It sets the rolloff frequency of the GR noise spectrum (~1 / (2 pi tau_qp))
+        and decreases as the optical load (and hence n_qp) increases.
+
+        Parameters
+        ----------
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        opt_eff : float or None
+            Optical absorption efficiency. Uses self.opt_eff if None.
+        pb_eff : float or None
+            Pair-breaking efficiency. Uses self.pb_eff if None.
+        nqp : float or None
+            Quasiparticle number density [um^-3]. Computed from T and Popt
+            if None.
+
+        Returns
+        -------
+        float
+            Quasiparticle lifetime tau_qp [s].
         '''
         if T is None:
             T = self.T
@@ -344,18 +735,52 @@ class MR_complex_resonator():
             nqp = self.calc_nqp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)
             
         Delta = self.calc_Delta_gao(T)
-        #nqp = self.calc_nqp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)
         return (self.tau0 / nqp) * self.N0 * (kb*self.Tc)**3 / (2*Delta**2)
 
 
 
     def calc_gr_PSD(self, frange=None, nqp=None, T=None, Popt=None, pb_eff=None, opt_eff=None):
         '''
-        power spectral density of quasiparticle number fluctuations (GR noise)
-        does not include the generation fluctuation due to photon noise
+        Compute the power spectral density of quasiparticle number fluctuations
+        from generation-recombination (GR) processes.
 
-        also note that this is NUMBER fluctuation, not number density 
+        This is the thermally-equilibrated GR noise (Eq. 2.39 of Rouble (2025)),
+        which accounts for both generation and recombination fluctuations but
+        does not include the additional generation fluctuation due to photon
+        shot noise:
 
+            S_N(f) = 4 N_qp tau_qp / (1 + (2 pi f tau_qp)^2)
+
+        The spectrum is white below the rolloff frequency 1/(2 pi tau_qp) and
+        falls as 1/f^2 above it. The total number of quasiparticles N_qp
+        includes both thermal and optically-sourced contributions.
+
+        Note: this returns NUMBER fluctuations (not number density). To convert
+        to number density, divide S_N by V_L^2.
+
+        Parameters
+        ----------
+        frange : array or None
+            Frequencies at which to evaluate the PSD [Hz].
+            Default: np.logspace(-2, 5.2, 100).
+        nqp : float or None
+            Quasiparticle number density [um^-3]. Computed from T and Popt
+            if None.
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        pb_eff : float or None
+            Pair-breaking efficiency. Uses self.pb_eff if None.
+        opt_eff : float or None
+            Optical absorption efficiency. Uses self.opt_eff if None.
+
+        Returns
+        -------
+        frange : array
+            Frequencies [Hz].
+        Sgr : array
+            GR noise PSD of quasiparticle number fluctuations [quasiparticles^2 / Hz].
         '''
         
         if T is None:
@@ -379,8 +804,37 @@ class MR_complex_resonator():
 
     def calc_gr_PSD_thermal_optical(self, frange=None, Popt=None, nu_opt=180e9):
         '''
-        resoantor noise PSD when qp are coming from thermal and optical processes
-        includes generation and recombination, plus generation from photon shot noise
+        Compute the total quasiparticle number PSD including all generation and
+        recombination terms.
+
+        Sums the thermal generation (S_g,th), optical generation / photon shot
+        noise (S_g,opt), and recombination (S_r) terms (Eqs. 2.35-2.40 of
+        Rouble (2025)) and applies the quasiparticle lifetime filter:
+
+            S_N(f) = 2 tau_qp^2 / (1 + (2 pi f tau_qp)^2) * (S_g,th + S_g,opt + S_r)
+
+        This is the quantity used to forecast total on-resonance resonator noise,
+        including both thermalized GR noise and the contribution from photon shot
+        noise. See Fig. 3.9 and Sec. 5.2.2 of Rouble (2025) for examples of
+        this calculation applied to deployed detectors.
+
+        Parameters
+        ----------
+        frange : array or None
+            Frequencies at which to evaluate the PSD [Hz].
+            Default: np.logspace(-2, 5.2, 100).
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        nu_opt : float
+            Photon frequency used for the photon shot noise term [Hz].
+            Default 180e9.
+
+        Returns
+        -------
+        frange : array
+            Frequencies [Hz].
+        S_N : array
+            Total quasiparticle number PSD [quasiparticles^2 / Hz].
         '''
         if frange is None:
             frange = np.logspace(-2, 5.2, 100)
@@ -403,43 +857,86 @@ class MR_complex_resonator():
         S_r = R * self.VL_um3 * nqp**2
         S_gth = R * self.VL_um3 * nqp_th**2
         S_gopt = (pb_eff / (Delta))**2 * opt_eff * Popt * h * nu_opt * (1 + opt_eff * photon_occupancy)
-        # print('GR total')
-        # print('%.1e'%S_r, '%.1e'%S_gth, '%.1e'%S_gopt)
         prefactor =  2 * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2))
         S_N = (S_gth + S_gopt + S_r) 
-        # print('%.1e'%S_N[0], '%.1e\n'%tau_qp)
-        return frange, S_N * prefactor#, S_N, S_r, S_gth, S_gopt, prefactor
+        return frange, S_N * prefactor
+
 
         
-
     ##########
-    # individual generation and recomination spectra
+    # individual generation and recombination spectra
     #####
 
     def calc_optical_generation_PSD(self, frange=None, Popt=None, nu_opt=180e9):
+        '''
+        Compute the PSD of quasiparticle number fluctuations due to photon
+        shot noise (optical generation fluctuations).
+
+        This is the contribution from the random arrival times of pair-breaking
+        photons (Eq. 2.34 of Rouble (2025)):
+
+            S_g,opt = (eta_pb / Delta)^2 * eta_opt * P_opt * h*nu * (1 + eta_opt * n_bar)
+
+        filtered by the quasiparticle lifetime. Here n_bar is the photon
+        occupancy at the sky temperature.
+
+        Parameters
+        ----------
+        frange : array or None
+            Frequencies [Hz]. Default: np.logspace(-2, 5.2, 100).
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        nu_opt : float
+            Photon frequency [Hz]. Default 180e9.
+
+        Returns
+        -------
+        frange : array
+            Frequencies [Hz].
+        PSD_gopt : array
+            Optical generation quasiparticle number PSD [quasiparticles^2 / Hz].
+        '''
         if frange is None:
             frange = np.logspace(-2, 5.2, 100)
         if Popt is None:
             Popt = self.Popt
 
         T=self.T
-        # Popt = self.Popt
         opt_eff = self.opt_eff
         pb_eff = self.pb_eff
         T_sky = 20 # K, partially transparent atmosphere
         photon_occupancy = 1. / (np.exp((h * nu_opt)/(kb*T_sky)) - 1)
         Delta = self.calc_Delta_gao(T)
-        # R = (2 * Delta)**2 / (2*self.N0 * self.tau0 * (kb * self.Tc)**3)
-        tau_qp = self.calc_tau_qp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)  # I guess this should still be from the TOTAL nqp present...?
+        tau_qp = self.calc_tau_qp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)
 
-        # S_gopt = (pb_eff / (Delta * self.VL_um3))**2 * opt_eff * Popt * h * nu_opt * (1 + opt_eff * photon_occupancy) 
         S_gopt = (pb_eff / (Delta))**2 * opt_eff * Popt * h * nu_opt * (1 + opt_eff * photon_occupancy) 
         PSD_gopt = S_gopt * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2)) * 2
-        # print('S gopt')
-        # print('%.1e'%PSD_gopt[0], '%.1e'%S_gopt, '%.1e\n'%tau_qp)
         return frange, PSD_gopt 
 
     def calc_recombination_PSD(self, frange=None):
+        '''
+        Compute the PSD of quasiparticle number fluctuations due to
+        recombination.
+
+        The recombination process is Poissonian (Eq. 2.35 of Rouble (2025)):
+
+            S_r = 2 R V_L n_qp^2
+
+        filtered by the quasiparticle lifetime. The total quasiparticle
+        density n_qp includes both thermal and optically-sourced contributions.
+
+        Parameters
+        ----------
+        frange : array or None
+            Frequencies [Hz]. Default: np.logspace(-2, 5.2, 100).
+
+        Returns
+        -------
+        frange : array
+            Frequencies [Hz].
+        S_r : array
+            Recombination quasiparticle number PSD [quasiparticles^2 / Hz].
+        '''
         if frange is None:
             frange = np.logspace(-2, 5.2, 100)
 
@@ -456,6 +953,30 @@ class MR_complex_resonator():
         return frange, S_r
 
     def calc_thermal_generation_PSD(self, frange=None):
+        '''
+        Compute the PSD of quasiparticle number fluctuations due to thermal
+        pair-breaking.
+
+        The thermal generation fluctuation is (Eq. 2.36 of Rouble (2025)):
+
+            S_g,th = 2 R V_L n_th^2
+
+        filtered by the quasiparticle lifetime. Note that the lifetime uses
+        the total quasiparticle density (thermal + optical), since recombination
+        depends on all quasiparticles in the system.
+
+        Parameters
+        ----------
+        frange : array or None
+            Frequencies [Hz]. Default: np.logspace(-2, 5.2, 100).
+
+        Returns
+        -------
+        frange : array
+            Frequencies [Hz].
+        S_gth : array
+            Thermal generation quasiparticle number PSD [quasiparticles^2 / Hz].
+        '''
         if frange is None:
             frange = np.logspace(-2, 5.2, 100)
 
@@ -465,8 +986,7 @@ class MR_complex_resonator():
         pb_eff = self.pb_eff
         Delta = self.calc_Delta_gao(T)
         R = (2 * Delta)**2 / (2*self.N0 * self.tau0 * (kb * self.Tc)**3)
-        tau_qp = self.calc_tau_qp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff) # I guess this should also be from the total nqp, including optically sourced...?
-        # tau_qp = self.calc_tau_qp(T=T, Popt=0, opt_eff=opt_eff, pb_eff=pb_eff) # no, by definition this is ONLY thermal
+        tau_qp = self.calc_tau_qp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)
         nqp = self.calc_nqp_th(T=T)
         
         S_gth = 2 * R * self.VL_um3 * nqp**2 * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2))
@@ -482,7 +1002,44 @@ class MR_complex_resonator():
 
     def make_carrier_Vout_timestream_for_nqp_timestream(self, Vin_timestream=None, nqp_timestream=None, carrier_freq=None,
                                                   fs=1e5, N=int(1e4)):
+        '''
+        Convert a timestream of quasiparticle densities to a timestream of
+        output carrier voltages.
 
+        For each value of n_qp in the input timestream, this method propagates
+        the change through the full physics chain (Fig. 3.8 of Rouble (2025)):
+
+            n_qp  -->  sigma1, sigma2  -->  Z_s  -->  R, L_k  -->  V_out
+
+        instantiating a new MR_LEKID at each timestep with the updated R and
+        L_k, and evaluating V_out at the carrier frequency. The carrier frequency
+        is held fixed throughout (i.e., the carrier is not updated to track
+        the resonance), consistent with typical readout operation.
+
+        This method is the core of the noise forecasting approach illustrated
+        in Fig. 3.9 of Rouble (2025): inverse-Fourier transforming the GR noise
+        PSD to produce a n_qp timestream, then propagating it to V_out.
+
+        Parameters
+        ----------
+        nqp_timestream : array
+            Timestream of quasiparticle number densities [um^-3].
+        Vin_timestream : array or None
+            Timestream of input carrier amplitudes [V]. If None, uses a
+            constant value of self.Vin for all timesteps.
+        carrier_freq : float or None
+            Fixed carrier frequency [Hz]. Uses self.readout_f (= fr) if None.
+        fs : float
+            Sample rate of the timestream [Hz]. Not used internally but
+            provided for bookkeeping. Default 1e5.
+        N : int
+            Number of samples. Not used internally. Default 1e4.
+
+        Returns
+        -------
+        timestream_Vout : array of complex
+            Timestream of complex output carrier voltages [V].
+        '''
 
         if Vin_timestream is None:
             Vin = self.Vin
@@ -500,26 +1057,17 @@ class MR_complex_resonator():
         timestream_R, timestream_Lk = self.calc_R_L(Zs=timestream_Zs, f=carrier_freq)
 
         timestream_Vout = []
-        # print('starting lekid params:')
-        # print(res.lekid_params_dark)
         for r, R in enumerate(timestream_R):
-            # print('lekid params now:')
-            # print(res.lekid_params_dark)
             res_params = copy.deepcopy(self.lekid_params_dark)
             res_params['R'] = R
             res_params['Lk'] = timestream_Lk[r]
             res_params['Vin'] = Vin_timestream[r]
             gr_mkid = MR_LEKID(**res_params)
-            # print('GR mkid params now:')
-            # print(gr_mkid.R, gr_mkid.Lk, gr_mkid.Lg)
 
             timestream_Vout.append(gr_mkid.compute_Vout(carrier_freq))
 
         timestream_Vout = np.asarray(timestream_Vout)  
         return timestream_Vout
-
-
-
 
 
     ###########
@@ -528,13 +1076,40 @@ class MR_complex_resonator():
 
 
     def est_photon_noise(self, Popt=None, nu=220e9, opt_eff=None, Tsky=20):
+        '''
+        Estimate the photon noise-equivalent power (NEP).
+
+        Computes the photon NEP from the random arrival statistics of photons
+        (Eq. 2.33 of Rouble (2025)):
+
+            NEP_photon = sqrt(2 eta_opt h nu P_opt (1 + eta_opt n_bar))
+
+        where n_bar is the photon occupancy at the sky temperature Tsky. This
+        represents the irreducible noise floor from the photon stream itself.
+        A system is photon-noise limited when its total noise is dominated by
+        this quantity.
+
+        Parameters
+        ----------
+        Popt : float or None
+            Absorbed optical power [W]. Uses self.Popt if None.
+        nu : float
+            Photon frequency [Hz]. Default 220e9.
+        opt_eff : float or None
+            Optical absorption efficiency. Uses self.opt_eff if None.
+        Tsky : float
+            Sky brightness temperature [K], used to compute the photon
+            occupancy n_bar. Default 20.
+
+        Returns
+        -------
+        float
+            Photon NEP [W / sqrt(Hz)].
+        '''
         if Popt is None:
             Popt = self.Popt
         if opt_eff is None:
             opt_eff = self.opt_eff
-        # h = 6.626e-34 # Js
-        # kb = 1.38e-23 # m^2 kg / (s^2 K)
-        # Tsky = 20 # K, approx black body atmosphere
         n_nu = (np.exp(h*nu / (kb * Tsky)) - 1)**(-1)  # photon occupancy
         photon_nep = np.sqrt(2*h*Popt*nu*opt_eff * (1 + opt_eff * n_nu)) # W / rtHz
         return photon_nep
@@ -543,14 +1118,22 @@ class MR_complex_resonator():
 
     def calc_Delta_gao(self, T=None):
         '''
-        compute the gap energy at temperature T, using the approximation in
-        Gao's thesis. This is representative of the full solution up to
-        temperatures around 0.7Tc.
+        Compute the superconducting gap energy at temperature T.
 
-        params:
+        Uses the Gao (2008) numerical approximation (Eq. 2.9 of Rouble (2025)),
+        which is accurate up to T ~ 0.7 Tc:
+
+            Delta(T) = Delta0 * exp(sqrt(2 pi kB T / Delta0) * exp(-Delta0 / kB T))
+
+        Parameters
+        ----------
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+
+        Returns
         -------
-        T : temperature in K
-
+        float
+            Gap energy Delta(T) [J].
         '''
         if T is None:
             T = self.T
@@ -561,7 +1144,19 @@ class MR_complex_resonator():
 
     def calc_fermi(self, E, T=None):
         '''
-        fermi-dirac distribution at E = h*f and temperature T in K
+        Compute the Fermi-Dirac distribution at energy E and temperature T.
+
+        Parameters
+        ----------
+        E : float or array
+            Energy [J].
+        T : float or None
+            Temperature [K]. Uses self.T if None.
+
+        Returns
+        -------
+        float or array
+            Fermi-Dirac occupation probability.
         '''
         
         if T is None:
@@ -576,28 +1171,9 @@ class MR_complex_resonator():
     # READOUT POWER ABSORPTION MODELING : QP HEATING MODEL #
     ########################################################
 
-#     def calc_Ires(self, Zres, Iin, carrier_freq=None, ZLNA=50.):
-#         '''
-#         use a current divider to estimate the current flowing through the resonator.
-#         technically this should be a three-way divider between the last-stage attenuator,
-#         the resonator, and the LNA input impedance, but this seems fine as an approximation.
-
-#         params:
-#         -------
-#         Zres : impedance of the resonator at the probe frequency
-#         Iin : input current. This is the current entering the divider, analogous to the
-#             "fixed" Vin. Typical values are in the range of 1 - 100 nA.
-#         '''
-#         if carrier_freq is None:
-#             carrier_freq = self.readout_f
-            
-#         Ires = self.lekid.calc_Ires(fc=carrier_freq, Zres=Zres, Iin=Iin, ZLNA=ZLNA)
-# #         Ires = Iin * ( (Zres + ZLNA) / Zres)
-#         return Ires
-
     def calc_power_abs_in_res(self, fc=None, Iin=None, Ires=None, Zres=None):
         '''
-        compute the power dissipated(/absorbed) in the resonance at a given frequency
+        Compute the power dissipated in the resonance at a given frequency.
 
         params:
         -------
@@ -621,7 +1197,7 @@ class MR_complex_resonator():
 
     def calc_eta(self, Pabs_per_volume):
         '''
-        compute the eta_2Delta parameter in the Goldie expression.
+        Compute the eta_2Delta parameter in the Goldie expression.
         *** Note that this expects Pabs_per_volume in units of W/um^3 ***
         '''
         eta = -0.03 * np.log(Pabs_per_volume) + 0.384
@@ -695,11 +1271,3 @@ class MR_complex_resonator():
             if verbose:
                 print('Passed! Teffs: %f, niters %d'%(Tsol, rootresult.function_calls))
             return Tsol, True
-
-
-
-
-    
-
-    
-
