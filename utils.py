@@ -145,7 +145,8 @@ def exp_bin_noise_data(f, psd, nbins=100):
 
 
 
-def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True, use_mean_value=False, make_plots=False, plot_save_dir=None):
+def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True,
+                     use_mean_value=False, make_plots=False, plot_save_dir=None):
 
     '''
     rotate the iq plane until the stddev is maximized in the 'Q' direction
@@ -238,7 +239,8 @@ def s21_skewed(f, f0, Qr, Qcre, Qcim, A):
         x = (f-f0)/f0
         return abs(A*(1 - Qr/(Qcre+1j*Qcim)/(1+2j*Qr*x)))
 
-def fit_skewed(freq, s21_iq, approxQr=1e4, normalize=True, fr_lim=None):
+def fit_skewed(freq, s21_iq, approxQr=1e4, normalize=True, fr_lim=None, 
+                    guess_Qi=None, guess_Qc=None):
     '''
     Apply Pete's skewed resonance model to a given set of s21 vs frequency data.
 
@@ -278,8 +280,13 @@ def fit_skewed(freq, s21_iq, approxQr=1e4, normalize=True, fr_lim=None):
         fr_lbound = np.mean(freq) - fr_lim
         fr_ubound = np.mean(freq) + fr_lim
         fr_guess = np.mean(freq)
+
+    if guess_Qi is not None and guess_Qc is not None:
+        approxQr = 1./(1./guess_Qi + 1./guess_Qc)
+    else:
+        guess_Qc = approxQr
     
-    init = [fr_guess, approxQr, approxQr, -approxQr, abs(s21_iq).mean()]
+    init = [fr_guess, approxQr, guess_Qc, -guess_Qc, abs(s21_iq).mean()]
     bounds = ([fr_lbound, 0, 0, -np.inf, 0], [fr_ubound, np.inf, np.inf, np.inf, np.inf])
     try:
         s21fitp, s21cov = curve_fit(s21_skewed, freq, abs(s21_iq), p0=init, bounds=bounds, sigma=np.ones(len(freq))*90)
@@ -337,7 +344,9 @@ def calc_rbw(fs, N):
 
 
 
-def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, rbw, baseline_nqp=None):
+def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, 
+                                            rbw=None, baseline_nqp=None,
+                                            fs=None, N=None):
     '''
     using the GR noise nqp power spectral density, create a timestream of
     nqp values that corresponds to this spectrum.
@@ -348,6 +357,13 @@ def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, rbw, b
 
     N : (int) number of samples
     '''
+
+    if rbw is None:
+        if fs is None:
+            fs = max(frequencies)*2
+        if N is None:
+            N = len(frequencies)
+        rbw = fs / N
 
     if baseline_nqp is None:
         baseline_nqp = res.calc_nqp()
@@ -369,7 +385,8 @@ def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, rbw, b
     dc_index = abs(frequencies).argmin()
     amplitude_spectrum_N[dc_index] = baseline_Nqp # the average value is the baseline population
 
-    timestream_N = np.fft.ifft(amplitude_spectrum_N).real * len(SN)
+    # timestream_N = 2*np.fft.ifft(amplitude_spectrum_N).real * len(SN)
+    timestream_N = 2*np.fft.irfft(amplitude_spectrum_N, n=N) * len(SN)
     
     return timestream_N / res.VL_um3
 

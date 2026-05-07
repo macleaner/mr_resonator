@@ -175,7 +175,7 @@ class MR_LEKID():
             
          # readout params
         self.system_termination = system_termination
-        self.input_atten_dB = input_atten_dB
+        self.input_atten_dB = abs(input_atten_dB)
         self.ZLNA = ZLNA
         self.GLNA = GLNA # LNA gain
         self.Z0 = Z0 # characteristic transmission line impedance
@@ -283,7 +283,8 @@ class MR_LEKID():
     
     
     
-    def compute_Vout(self, fc, Vin=None, L=None, C=None, R=None, Cc=None, ZLNA=None, GLNA=None, input_atten_dB=None):
+    def compute_Vout(self, fc, Vin=None, L=None, C=None, R=None, Cc=None, 
+                    ZLNA=None, GLNA=None, input_atten_dB=None):
         '''
         Compute the output carrier voltage as a function of frequency.
 
@@ -314,7 +315,8 @@ class MR_LEKID():
         GLNA : float or None
             LNA voltage gain. Uses self.GLNA if None.
         input_atten_dB : float or None
-            Last-stage attenuator value [dB]. Uses self.input_atten_dB if None.
+            Last-stage attenuator attenuation value [dB]. Expected to be positive,
+            for attenuation in dB. Uses self.input_atten_dB if None.
 
         Returns
         -------
@@ -373,6 +375,9 @@ class MR_LEKID():
     def get_att_vals(self, att, z0=50.):
         '''
         Compute pi-type attenuator resistor values for a given attenuation.
+        z0 here is not the resonator line impedance, but the nominal impedance
+        this attenuator expects to see. Basically it should always be
+        50 ohm, unless you know otherwise.
 
         Parameters
         ----------
@@ -386,7 +391,7 @@ class MR_LEKID():
         r1, r2, r3 : float
             Resistor values [Ohm] for the pi-type attenuator.
         '''
-        
+        att = abs(att)
         r1 = z0 * ((10**(att/20.) +1) / (10**(att/20.) - 1))
         r3 = r1
         r2 = (z0 / 2.) * ((10**(att/10.) - 1) / (10**(att/20.)))
@@ -472,6 +477,15 @@ class MR_LEKID():
         Ires = Iin * Zpar / Zres
         return Ires
     
+
+    def calc_IL(self, fc, Ires):
+        # Zres = new_lekid.total_impedance(carrier_freq)
+
+        ZRLC = self.parallel_RLC(fc)
+        ZL = 2.j*np.pi*(self.Lk + self.Lg)*fc
+        IL = Ires * ZRLC / (ZL + self.R)
+
+        return IL
     
     
     
@@ -784,7 +798,8 @@ class MR_LEKID():
         fr = self.compute_fr()
         frange = np.linspace(fr-span, fr+span, npts)
         Vout = self.compute_Vout(frange)
-        fit_dict = utils.fit_skewed(frange, Vout)
+        guess_Qr, guess_Qi, guess_Qc = self.compute_Q_values()
+        fit_dict = utils.fit_skewed(frange, Vout, guess_Qc=guess_Qc, guess_Qi=guess_Qi)
 
         Qr = fit_dict['Qr']
         Qi = fit_dict['Qi']

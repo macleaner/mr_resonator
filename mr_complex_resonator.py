@@ -91,17 +91,7 @@ class MR_complex_resonator():
         frange = np.linspace(fr - 500e3, fr + 500e3, 1000)
         Vout = res.lekid.compute_Vout(frange)
 
-    Compute the GR noise PSD and photon noise::
 
-        frange, S_N = res.calc_gr_PSD_thermal_optical()
-        nep_photon = res.est_photon_noise()
-
-    Propagate a quasiparticle density timestream to a voltage timestream::
-
-        frange_gr, S_N = res.calc_gr_PSD()
-        nqp_ts = utils.make_nqp_timestream(frange_gr, S_N, fs=1e4, N=int(1e5))
-        Vout_ts = res.make_carrier_Vout_timestream_for_nqp_timestream(
-                      nqp_timestream=nqp_ts, carrier_freq=fr)
     '''
     
     def __init__(self, T=0.12, base_readout_f=1e9, material='Al', VL=540e-18, width=2e-6, thickness=30e-9, 
@@ -275,7 +265,7 @@ class MR_complex_resonator():
         
         # generate dark resonator
         self.Z0 = Z0
-        self.input_atten_dB = input_atten_dB
+        self.input_atten_dB = abs(input_atten_dB) ## the code expects a value for ATTENUATION
         self.C = C
         self.Cc = Cc
         self.Vin = Vin
@@ -607,7 +597,7 @@ class MR_complex_resonator():
     # QUASIPARTICLE DENSITY CALCULATIONS #
     ######################################
         
-    def calc_nqp(self, T=None, Popt=None, opt_eff=None, pb_eff=None):
+    def calc_nqp(self, T=None, Popt=None, opt_eff=None, pb_eff=None, nstar=None):
         '''
         Compute the steady-state quasiparticle number density.
 
@@ -648,16 +638,18 @@ class MR_complex_resonator():
             opt_eff = self.opt_eff
         if pb_eff is None:
             pb_eff = self.pb_eff
+        if nstar is None:
+            nstar = self.nstar
             
         Delta = self.calc_Delta_gao(T=T)
         
         R = (2 * Delta)**2 / (2*self.N0 * self.tau0 * (kb * self.Tc)**3)
         
-        nth = self.calc_nqp_th(T=T) + self.nstar
+        nth = self.calc_nqp_th(T=T) 
         rate_thermal = R * nth**2
-        rate_optical = pb_eff * opt_eff * Popt / (Delta * self.VL_um3)
+        rate_optical = 2*pb_eff * opt_eff * Popt / (Delta * self.VL_um3)
                 
-        return np.sqrt(nth**2 + rate_optical/R) - self.nstar
+        return np.sqrt(nth**2 + nstar**2 + rate_optical/R)
 
     def calc_nqp_th(self, T=None):
         '''
@@ -855,7 +847,8 @@ class MR_complex_resonator():
         nqp = self.calc_nqp(T=T, Popt=Popt, opt_eff=opt_eff, pb_eff=pb_eff)
         
         S_r = R * self.VL_um3 * nqp**2
-        S_gth = R * self.VL_um3 * nqp_th**2
+        S_gth = R * self.VL_um3 * nqp_th**2 #
+        S_gth = R * self.VL_um3 * nqp**2 # thermalized g spectrum
         S_gopt = (pb_eff / (Delta))**2 * opt_eff * Popt * h * nu_opt * (1 + opt_eff * photon_occupancy)
         prefactor =  2 * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2))
         S_N = (S_gth + S_gopt + S_r) 
@@ -1000,7 +993,8 @@ class MR_complex_resonator():
     #############
 
 
-    def make_carrier_Vout_timestream_for_nqp_timestream(self, Vin_timestream=None, nqp_timestream=None, carrier_freq=None,
+    def make_carrier_Vout_timestream_for_nqp_timestream(self, Vin_timestream=None, 
+                                                nqp_timestream=None, carrier_freq=None,
                                                   fs=1e5, N=int(1e4)):
         '''
         Convert a timestream of quasiparticle densities to a timestream of
@@ -1123,7 +1117,7 @@ class MR_complex_resonator():
         Uses the Gao (2008) numerical approximation (Eq. 2.9 of Rouble (2025)),
         which is accurate up to T ~ 0.7 Tc:
 
-            Delta(T) = Delta0 * exp(sqrt(2 pi kB T / Delta0) * exp(-Delta0 / kB T))
+            Delta(T) = Delta0 * exp(-sqrt(2 pi kB T / Delta0) * exp(-Delta0 / kB T))
 
         Parameters
         ----------
@@ -1137,10 +1131,13 @@ class MR_complex_resonator():
         '''
         if T is None:
             T = self.T
+
+        x = np.sqrt((2*np.pi*kb*T/self.Delta0) * np.exp(-self.Delta0/(kb*T)))
+        return self.Delta0 * np.exp(-x)
         
-        innerexp = np.exp(-self.Delta0 / (kb*T))
-        outerexp = np.exp( (-2*np.pi*kb * T / self.Delta0) * innerexp)
-        return self.Delta0 * outerexp
+        # innerexp = np.exp(-self.Delta0 / (kb*T))
+        # outerexp = np.exp( (-2*np.pi*kb * T / self.Delta0) * innerexp)
+        # return self.Delta0 * outerexp
 
     def calc_fermi(self, E, T=None):
         '''
