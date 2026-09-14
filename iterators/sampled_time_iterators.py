@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 from collections import deque
 
 
-from mr_complex_resonator import MR_complex_resonator as MR_complex_resonator
-from mr_lekid import MR_LEKID as MR_LEKID
-import utils
+from ..mr_complex_resonator import MR_complex_resonator
+from ..mr_lekid import MR_LEKID
+from .. import utils
 
 
 def make_nature_fs_timestreams(carrier_Vin_timestream, carrier_freq_timestream, system_fs, nature_fs):

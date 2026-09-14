@@ -41,6 +41,12 @@ MATERIAL_DEFAULTS = {
         "Tc": 1.1, # Leduc 2012
         "rhoN": 100e-6 /100 # uohm * cm / 100 = uohm*m - Leduc 2012 (20 to 100nm films, Tc 0.7 to 4.1 K; Ls=8.4 pH)
     },
+    "TiN_stoich_seeqc": { # vissers 2012 gives rhoN between 45 - 185 uOhm cm; driessen 2012 up to 380u; generally lower for higher Tc
+        "N0" : 8.7e9 / E_CHARGE, # LeDuc 2012 *** notes that this is insensitive to stoichiometry
+        "tau0": 88e-9, # Kardakova 2013
+        "Tc": 4.0, # Leduc 2012
+        "rhoN": 200e-6 /100 # uohm * cm / 100 = uohm*m - Leduc 2012 (20 to 100nm films, Tc 0.7 to 4.1 K; Ls=8.4 pH)
+    },
     "NbTiN": {
         "N0": 1.0e10 / E_CHARGE,
         "tau0": 10e-9,

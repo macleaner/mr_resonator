@@ -31,9 +31,9 @@ from scipy.optimize import brentq
 
 
 
-from mr_lekid import MR_LEKID as MR_LEKID
-import utils
-import material_properties
+from .mr_lekid import MR_LEKID
+from . import utils
+from . import material_properties
 
 
 
@@ -98,7 +98,7 @@ class MR_complex_resonator():
                  length=None, C=0.5e-12, Cc=0.002e-12, alpha_k=0.5, fix_Lg=None, R_spoiler=0, L_junk=0, 
                  Tc=None, N0=None, tau0=None, Rsheet_N=None, rhoN=None, sigmaN=None,
                  Popt=1e-18, opt_eff=0.5, pb_eff=0.7, nu_opt=150e9, big_sigma_factor=1e-4, nstar=0, 
-                 Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1, Z0=50.,
+                 Vin=0.15e-3, input_atten_dB=20, ZLNA=50., GLNA=1, Z0=50., Istar=None,
                  verbose=False):
         '''
         Parameters
@@ -322,6 +322,13 @@ class MR_complex_resonator():
         self.readout_f = self.lekid.compute_fr()
         if verbose:
             print(self.lekid_params_dark)
+
+        # estimate characteristic nonlinear current
+        J_star = np.sqrt( np.pi * (1e6**3)*self.N0 *self.Delta0**3 / (self.rhoN * h/(2*np.pi)))
+        if Istar is None:
+            self.Istar = J_star * (self.width * self.thickness)
+        else:
+            self.Istar = Istar # allow overrides for convenience
 
     
 

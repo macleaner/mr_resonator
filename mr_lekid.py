@@ -28,7 +28,7 @@ from scipy.optimize import brentq
 
 import matplotlib as mpl
 
-import utils
+from . import utils
 
 
 class MR_LEKID():
@@ -424,8 +424,7 @@ class MR_LEKID():
         r1, r2, r3 = self.get_att_vals(self.input_atten_dB)
         Zsys = 1. / ( 1./Zres + 1./self.ZLNA )
         Zp = 1. / ( 1./Zsys + 1./r3 )
-        I2 = Vin / (r2 + Zp)
-        Iin = I2 * ( r3 / (Zsys + r3) )
+        Iin = Vin / (r2 + Zp)
         return Iin
     
     def calc_Ires(self, fc, Zres=None, Iin=None, Vin=None, ZLNA=50., Z_other=None):
