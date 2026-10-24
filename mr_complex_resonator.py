@@ -148,9 +148,9 @@ class MR_complex_resonator():
         Cc : float
             Coupling capacitance [F]. Default 0.002e-12.
         alpha_k : float
-            Kinetic inductance fraction, L_k / (L_k + L_g). Used to set the
-            geometric inductance L_g from the computed L_k. Ignored if
-            fix_Lg is provided. Default 0.5.
+            Kinetic inductance fraction, L_k / (L_k + L_g + L_junk). Used to
+            set the geometric inductance L_g from the computed L_k. If
+            fix_Lg is provided, alpha_k is inferred instead. Default 0.5.
         fix_Lg : float or None
             If provided, fixes the geometric inductance to this value [H]
             rather than inferring it from alpha_k. Default None.
@@ -261,6 +261,7 @@ class MR_complex_resonator():
         self.sigma_initial = self.sigma1_initial - 1.j*self.sigma2_initial
         self.Zs_initial = self.calc_Zs(f=self.readout_f, sigma=self.sigma_initial)
         self.R_initial, self.Lk_initial = self.calc_R_L(f=self.readout_f, Zs=self.Zs_initial)
+        self.R_initial += self.R_spoiler
         
         # generate dark resonator
         self.Z0 = Z0
@@ -268,12 +269,13 @@ class MR_complex_resonator():
         self.C = C
         self.Cc = Cc
         self.Vin = Vin
+
         if fix_Lg is None:
             self.alpha_k = alpha_k
-            self.Lg = (self.Lk_initial - self.alpha_k*self.Lk_initial) / self.alpha_k
+            self.Lg = self.Lk_initial / self.alpha_k - self.Lk_initial - self.L_junk
         else:
             self.Lg = fix_Lg
-            self.alpha_k = self.Lk_initial / (self.Lk_initial + self.Lg)
+            self.alpha_k = self.Lk_initial / (self.Lk_initial + self.Lg + self.L_junk)
         
         self.lekid_params_initial = dict(R=self.R_initial, Lk=self.Lk_initial, Lg=self.Lg, 
                                         C=self.C, Cc=self.Cc, Vin=self.Vin, 
@@ -300,6 +302,7 @@ class MR_complex_resonator():
         self.sigma_dark = self.sigma1_dark - 1.j*self.sigma2_dark
         self.Zs_dark = self.calc_Zs(f=self.readout_f, sigma=self.sigma_dark)
         self.R_dark, self.Lk_dark = self.calc_R_L(f=self.readout_f, Zs=self.Zs_dark)
+        self.R_dark += self.R_spoiler
         
         # generate dark resonator
         self.C = C
@@ -307,10 +310,10 @@ class MR_complex_resonator():
         self.Vin = Vin
         if fix_Lg is None:
             self.alpha_k = alpha_k
-            self.Lg = (self.Lk_dark - self.alpha_k*self.Lk_dark) / self.alpha_k
+            self.Lg = self.Lk_dark / self.alpha_k - self.Lk_dark - self.L_junk
         else:
             self.Lg = fix_Lg
-            self.alpha_k = self.Lk_dark / (self.Lk_dark + self.Lg)
+            self.alpha_k = self.Lk_dark / (self.Lk_dark + self.Lg + self.L_junk)
         
         self.lekid_params_dark = dict(R=self.R_dark, Lk=self.Lk_dark, Lg=self.Lg, 
                                     C=self.C, Cc=self.Cc, Vin=self.Vin, 
@@ -388,8 +391,8 @@ class MR_complex_resonator():
 
     def calc_R_L(self, f, Zs):
         '''
-        Compute the total inductor resistance R and kinetic inductance L_k
-        from the surface impedance and inductor geometry.
+        Compute the superconductor-derived resistance R and kinetic inductance
+        L_k from the surface impedance and inductor geometry.
 
         Scales the surface impedance by the length-to-width ratio of the
         inductor (Eqs. 3.1-3.2 of Rouble (2025)):
@@ -397,7 +400,8 @@ class MR_complex_resonator():
             L_k = Im{Z_s} / (2 pi f) * (l / w)
             R   = Re{Z_s} * (l / w)
 
-        Note: R_spoiler is added separately in __init__ after this call.
+        R_spoiler is excluded here. It is added when constructing the circuit
+        in __init__ and in the quasiparticle time-stream method.
 
         Parameters
         ----------
@@ -409,11 +413,11 @@ class MR_complex_resonator():
         Returns
         -------
         R : float or array
-            Inductor real impedance [Ohm].
+            Superconductor-derived inductor resistance [Ohm].
         L : float or array
             Kinetic inductance [H].
         '''
-        R = (Zs.real ) * (self.length / self.width) + self.R_spoiler
+        R = (Zs.real ) * (self.length / self.width)
         L = (Zs.imag / (2*np.pi*f)) * (self.length / self.width)
         return R, L
     
@@ -1057,11 +1061,16 @@ class MR_complex_resonator():
 
         timestream_Vout = []
         for r, R in enumerate(timestream_R):
-            res_params = copy.deepcopy(self.lekid_params_dark)
-            res_params['R'] = R
-            res_params['Lk'] = timestream_Lk[r]
-            res_params['Vin'] = Vin_timestream[r]
-            gr_mkid = MR_LEKID(**res_params)
+            gr_mkid = self.lekid.new_lekid_with_state(
+                        R=R + self.R_spoiler,
+                        Lk=timestream_Lk[r],
+                        Vin=Vin_timestream[r],
+                    )
+            # res_params = copy.deepcopy(self.lekid_params_dark)
+            # res_params['R'] = R
+            # res_params['Lk'] = timestream_Lk[r]
+            # res_params['Vin'] = Vin_timestream[r]
+            # gr_mkid = MR_LEKID(**res_params)
 
             timestream_Vout.append(gr_mkid.compute_Vout(carrier_freq))
 

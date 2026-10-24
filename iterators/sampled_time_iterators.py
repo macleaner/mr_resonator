@@ -66,8 +66,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres)
     Iin = carrier_Vin_timestream[0] / (Zpar + r2)
     Ires = Iin * Zpar/Zres
-    ZL = 2.j*np.pi*(res.lekid.Lk + res.lekid.Lg)*carrier_freq_timestream[0]
-    IL = Ires * ZRLC / (ZL + res.lekid.R)
+    IL = res.lekid.calc_IL(carrier_freq_timestream[0], Ires)
 
     outdict = {}
     outdict['system_fs'] = {}
@@ -173,7 +172,6 @@ def single_resonance_iterator(res, carrier_freq_timestream,
             
         Zres = new_lekid.total_impedance(carrier_freq)
         ZRLC = new_lekid.parallel_RLC(carrier_freq)
-        ZL = 2.j*np.pi*(Lk + res.Lg)*carrier_freq
         Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres )
         Iin = Vin / (Zpar + r2)
         
@@ -183,8 +181,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         Ires = next_Ires + (Ires - next_Ires) * np.exp(-ttt / nominal_tau)
         
         ### and I guess we assume that the INDUCTOR current follows this instantly...? TODO
-        next_IL = Ires * ZRLC / (ZL + R)
-        IL = next_IL
+        IL = new_lekid.calc_IL(carrier_freq, Ires)
         outdict['nature_fs'][step]['t'] = step * ttt
 
         if step % sample_rate_factor == 0:
@@ -275,8 +272,7 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres)
     Iin = Vin / (Zpar + r2)
     Ires = Iin * Zpar/Zres
-    ZL = 2.j*np.pi*(res.lekid.Lk + res.lekid.Lg)*carrier_freq_timestream[0]
-    IL = Ires * ZRLC / (ZL + res.lekid.R)
+    IL = res.lekid.calc_IL(carrier_freq_timestream[0], Ires)
 
     outdict = {}
     outdict['system_fs'] = {}
@@ -378,7 +374,6 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
             
         Zres = new_lekid.total_impedance(carrier_freq)
         ZRLC = new_lekid.parallel_RLC(carrier_freq)
-        ZL = 2.j*np.pi*(Lk + res.Lg)*carrier_freq
         Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres )
         Iin = Vin / (Zpar + r2)
         
@@ -388,8 +383,7 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
         Ires = next_Ires + (Ires - next_Ires) * np.exp(-ttt / nominal_tau)
         
         ### and I guess we assume that the INDUCTOR current follows this instantly...? TODO
-        next_IL = Ires * ZRLC / (ZL + R)
-        IL = next_IL
+        IL = new_lekid.calc_IL(carrier_freq, Ires)
         outdict['nature_fs'][step]['t'] = step * ttt
 
         if step % sample_rate_factor == 1:
@@ -489,8 +483,7 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres)
     Iin = Vin / (Zpar + r2)
     Ires = Iin * Zpar/Zres
-    ZL = 2.j*np.pi*(res.lekid.Lk + res.lekid.Lg)*carrier_freq_timestream[0]
-    IL = Ires * ZRLC / (ZL + res.lekid.R)
+    IL = res.lekid.calc_IL(carrier_freq_timestream[0], Ires)
 
     outdict = {}
     outdict['system_fs'] = {}
@@ -592,7 +585,6 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
             
         Zres = new_lekid.total_impedance(carrier_freq)
         ZRLC = new_lekid.parallel_RLC(carrier_freq)
-        ZL = 2.j*np.pi*(Lk + res.Lg)*carrier_freq
         Zpar = 1./(1./ZLNA + 1./r3 + 1./Zres )
         Iin = Vin / (Zpar + r2)
         
@@ -602,8 +594,7 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
         Ires = next_Ires + (Ires - next_Ires) * np.exp(-ttt / nominal_tau)
         
         ### and I guess we assume that the INDUCTOR current follows this instantly...? TODO
-        next_IL = Ires * ZRLC / (ZL + R)
-        IL = next_IL
+        IL = new_lekid.calc_IL(carrier_freq, Ires)
         outdict['nature_fs'][step]['t'] = step * ttt
 
         if step % sample_rate_factor == 1:

@@ -48,7 +48,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     
     # we need to know the other impedances in the nearby circuit to compute the current
     r1, r2, r3 = target.lekid.get_att_vals(target.lekid.input_atten_dB)
-    ZLNA = 50.
+    ZLNA = target.lekid.ZLNA
     Zatt = r3
     
     if save_watcher_data:
@@ -59,10 +59,8 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Ztarg)
     Iin = carrier_Vin_timestream[0] / (Zpar + r2)
     Itarg = Iin * Zpar/Ztarg
-
-    targ_ZL = 2.j*np.pi*(target.lekid.Lk + target.Lg)*carrier_freq_timestream[0]
     targ_ZRLC = target.lekid.parallel_RLC(carrier_freq_timestream[0])
-    targ_IL = Itarg * targ_ZRLC / (targ_ZL + target.lekid.R)
+    targ_IL = target.lekid.calc_IL(carrier_freq_timestream[0], Itarg)
 
 
     outdict = {}
@@ -144,10 +142,8 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
             
             next_Itarg = Iin * Zpar/Ztarg
             Itarg = Itarg + damp*(next_Itarg - Itarg)
-            
-            targ_ZL = 2.j*np.pi*(targ_Lk + target.Lg)*carrier_freq
             targ_ZRLC = targ_new_lekid.parallel_RLC(carrier_freq)
-            targ_IL = Itarg * targ_ZRLC / (targ_ZL + targ_R)
+            targ_IL = targ_new_lekid.calc_IL(carrier_freq, Itarg)
             
             Vout = carrier_Vin * (Zpar / (r2 + Zpar))
             outdict[step]['carrier_Vout']['iters'].append(Vout)
@@ -234,7 +230,7 @@ def two_resonance_iterator(target, neighbour,
     
     # we need to know the other impedances in the nearby circuit to compute the current
     r1, r2, r3 = target.lekid.get_att_vals(target.lekid.input_atten_dB)
-    ZLNA = 50.
+    ZLNA = target.lekid.ZLNA
     Zatt = r3
     
     if save_watcher_data:
@@ -246,15 +242,12 @@ def two_resonance_iterator(target, neighbour,
     Ztarg = target.lekid.total_impedance(carrier_freq_timestream[0])
     Zneigh = neighbour.lekid.total_impedance(carrier_freq_timestream[0])
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Ztarg + 1./Zneigh)
-
-    targ_ZL = 2.j*np.pi*(target.lekid.Lk + target.Lg)*carrier_freq_timestream[0]
     targ_ZRLC = target.lekid.parallel_RLC(carrier_freq_timestream[0])
-    neigh_ZL = 2.j*np.pi*(neighbour.lekid.Lk + neighbour.Lg)*carrier_freq_timestream[0]
     neigh_ZRLC = neighbour.lekid.parallel_RLC(carrier_freq_timestream[0])
     
     # if we have already prepared the system, start from that point
     if setup_outdict is not None: 
-        print('erading from setup outdict')
+        print('reading from setup outdict')
         setup_steps = list(setup_outdict.keys())
         Iin = setup_outdict[setup_steps[-1]]['Iin']['final']
         # Zres = setup_outdict[setup_steps[-1]]['targ']['Zres']
@@ -270,8 +263,8 @@ def two_resonance_iterator(target, neighbour,
         Iin = carrier_Vin_timestream[0] / (Zpar + r2)
         Itarg = Iin * Zpar/Ztarg
         Ineigh = Iin * Zpar/Zneigh
-        targ_IL = Itarg * targ_ZRLC / (targ_ZL + target.lekid.R)
-        neigh_IL = Itarg * neigh_ZRLC / (neigh_ZL + target.lekid.R)
+        targ_IL = target.lekid.calc_IL(carrier_freq_timestream[0], Itarg)
+        neigh_IL = neighbour.lekid.calc_IL(carrier_freq_timestream[0], Ineigh)
 
     outdict = {}
     params = ['Lk', 'Lk_Isq', 'R', 'fr', 'IL', 'Ires', 'Zres', 'nqp']
@@ -351,7 +344,7 @@ def two_resonance_iterator(target, neighbour,
 
             neigh_Zs = neighbour.calc_Zs(f=carrier_freq, sigma=neigh_sigma) 
             neigh_R, neigh_Lk = neighbour.calc_R_L(f=carrier_freq, Zs=neigh_Zs)
-            neighR = neigh_R + neighbour.R_spoiler
+            neigh_R = neigh_R + neighbour.R_spoiler
             outdict[step]['neigh']['Lk']['iters'].append(neigh_Lk)
             outdict[step]['neigh']['R']['iters'].append(neigh_R)
             
@@ -384,15 +377,11 @@ def two_resonance_iterator(target, neighbour,
 #             ttt = 1./Ires_fs
 #             Itarg = next_Itarg + (Itarg - next_Itarg) * np.exp(-ttt / nominal_tau_targ)
 #             Ineigh = next_Ineigh + (Ineigh - next_Ineigh) * np.exp(-ttt / nominal_tau_neigh)
-            
-            targ_ZL = 2.j*np.pi*(targ_Lk + target.Lg)*carrier_freq
             targ_ZRLC = targ_new_lekid.parallel_RLC(carrier_freq)
-            targ_IL = Itarg * targ_ZRLC / (targ_ZL + targ_R)
+            targ_IL = targ_new_lekid.calc_IL(carrier_freq, Itarg)
             targ_fr = targ_new_lekid.compute_fr()
-        
-            neigh_ZL = 2.j*np.pi*(neigh_Lk + neighbour.Lg)*carrier_freq
             neigh_ZRLC = neigh_new_lekid.parallel_RLC(carrier_freq)
-            neigh_IL = Ineigh * neigh_ZRLC / (neigh_ZL + neigh_R)
+            neigh_IL = neigh_new_lekid.calc_IL(carrier_freq, Ineigh)
             neigh_fr = neigh_new_lekid.compute_fr()
             
             outdict[step]['targ']['fr']['iters'].append(targ_fr)
@@ -669,10 +658,8 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
     Zpar = 1./(1./ZLNA + 1./r3 + 1./Ztarg)
     Iin = carrier_Vin_timestream[0] / (Zpar + r2)
     Itarg = Iin * Zpar/Ztarg
-
-    targ_ZL = 2.j*np.pi*(target.lekid.Lk + target.Lg)*carrier_freq_timestream[0]
     targ_ZRLC = target.lekid.parallel_RLC(carrier_freq_timestream[0])
-    targ_IL = Itarg * targ_ZRLC / (targ_ZL + target.lekid.R)
+    targ_IL = target.lekid.calc_IL(carrier_freq_timestream[0], Itarg)
 
 
     outdict = {}
@@ -745,7 +732,7 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
             C = C_timestream[step]
             outdict[step]['targ']['C']['iters'].append(C)
             targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, 
-                C=C, Cc=target.Cc, Vin=carrier_Vin, input_atten_dB=input_atten_dB)
+                C=C, Cc=target.Cc, Vin=carrier_Vin, input_atten_dB=input_atten_dB, L_junk=target.L_junk)
             targ_new_lekid = MR_LEKID(**targ_lekid_params)
             targ_fr = targ_new_lekid.compute_fr()
             outdict[step]['targ']['fr']['iters'].append(targ_fr)
@@ -757,10 +744,8 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
             
             next_Itarg = Iin * Zpar/Ztarg
             Itarg = Itarg + damp*(next_Itarg - Itarg)
-            
-            targ_ZL = 2.j*np.pi*(targ_Lk + target.Lg)*carrier_freq
             targ_ZRLC = targ_new_lekid.parallel_RLC(carrier_freq)
-            targ_IL = Itarg * targ_ZRLC / (targ_ZL + targ_R)
+            targ_IL = targ_new_lekid.calc_IL(carrier_freq, Itarg)
             
             Vout = carrier_Vin * (Zpar / (r2 + Zpar))
             outdict[step]['carrier_Vout']['iters'].append(Vout)
