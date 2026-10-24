@@ -29,7 +29,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
                           carrier_Vin_timestream, 
                            nqp_timestream=None,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           nature_fs=1e7, system_fs=1e4,
@@ -37,8 +37,11 @@ def single_resonance_iterator(res, carrier_freq_timestream,
                           stop_when_comb_hithered=False, comb_hither_threshold=1e3,
                           gather_calsamps=True):
     '''
-    NOTE the assumption is the timestreams will be sampled at the nature sampling rate
+    NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    if Istar is None:
+        Istar = res.Istar
+
     fr = res.lekid.compute_fr()
 
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
@@ -151,12 +154,12 @@ def single_resonance_iterator(res, carrier_freq_timestream,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict['nature_fs'][step]['R_Isq'] = R
         outdict['system_fs'][system_step]['R_Isq'] += R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict['nature_fs'][step]['Lk_Isq'] = Lk
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 
@@ -235,14 +238,17 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
                            starting_Vin=1e-5, setpoint=None, theta_rot=0, 
                            delay_nsamps=5, Icoeff=0,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           nature_fs=1e7, system_fs=1e4,
                           stabilize_first=True):
     '''
-    NOTE the assumption is the timestreams will be sampled at the nature sampling rate
+    NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    if Istar is None:
+        Istar = res.Istar
+
     fr = res.lekid.compute_fr()
     # print(yes)
 
@@ -353,12 +359,12 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict['nature_fs'][step]['R_Isq'] = R
         outdict['system_fs'][system_step]['R_Isq'] += R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict['nature_fs'][step]['Lk_Isq'] = Lk
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 
@@ -446,14 +452,17 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
                            starting_Vin=1e-5, setpoint=None, theta_rot=0, 
                            delay_nsamps=5, Icoeff=0,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           nature_fs=1e7, system_fs=1e4,
                           stabilize_first=True):
     '''
-    NOTE the assumption is the timestreams will be sampled at the nature sampling rate
+    NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    if Istar is None:
+        Istar = res.Istar
+
     fr = res.lekid.compute_fr()
     # print(yes)
 
@@ -564,12 +573,12 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict['nature_fs'][step]['R_Isq'] = R
         outdict['system_fs'][system_step]['R_Isq'] += R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict['nature_fs'][step]['Lk_Isq'] = Lk
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 

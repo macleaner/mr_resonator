@@ -456,7 +456,7 @@ def two_resonance_iterator(target, neighbour,
 
 def set_up_for_feedback(res, foffset=-30e3, 
                       carrier_Vin_timestream=np.linspace(10e-5, 50e-6, 100),
-                        fdetune=0, comb_hither_threshold=50., Istar=1e-3,
+                        fdetune=0, comb_hither_threshold=50., Istar=None,
                         gather_calsamps=True, 
                         calsamps_nqp_amplitude=0.001, n_calsamps=30,
                         make_plots=False,
@@ -620,7 +620,7 @@ def set_up_for_feedback(res, foffset=-30e3,
 
 def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_timestream,
                     nqp_timestream=None, C_timestream=None,
-                    save_watcher_data=True, watcher_span=300e3, Istar=1e-3,
+                    save_watcher_data=True, watcher_span=300e3, Istar=None,
                     niters=150, damp=0.1, 
                     stop_when_comb_hithered=False, check_comb_hither_sign=False,
                     comb_hither_fdetune=0, comb_hither_threshold=500,
@@ -629,6 +629,8 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
     comb_hither_fdetune: the target frequency separation between the carrier
         and the driven resonant frequency
     '''
+    if Istar is None:
+        Istar = res.Istar
 
     target = copy.deepcopy(res)
 
@@ -790,5 +792,3 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
     outdict[step]['comb_hithered'] = stop_flag
         
     return outdict
-
-
