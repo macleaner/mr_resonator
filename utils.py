@@ -13,7 +13,7 @@ from scipy.optimize import curve_fit
 
 
 def calc_Cc(C, f0, Qc, Z0=50):
-    return np.sqrt((8*C) / (2*np.pi*f0*Qc*Z0))
+    return np.sqrt((2*C) / (2*np.pi*f0*Qc*Z0))
 
 
 
@@ -212,24 +212,29 @@ def rotate_iq_plane(iqdata, n_thetas=50, enforce_positive_i=True,
     theta_best = 2*np.pi - theta_range[np.argmax(ratio)]
     iqrot = (iqdata) * np.exp(1.j*theta_best)
     
-    if enforce_positive_i and np.mean(iqrot)<0:
+    if enforce_positive_i and np.mean(iqrot.real)<0:
         iqrot *= np.exp(1.j*np.pi)
         theta_best += np.pi
 
     return iqrot, theta_best 
 
-def align_carrier_with_readout_I(iqdata):
-    '''
+# def align_carrier_with_readout_I(iqdata):
+#     '''
     
-    '''
-    theta_raw = np.arcsin(np.mean(iqdata).imag / abs(np.mean(iqdata))) ### scould this arctan instead?
-    if np.mean(iqdata).real > 0:
-        theta = -theta_raw
+#     '''
+#     theta_raw = np.arcsin(np.mean(iqdata).imag / abs(np.mean(iqdata))) ### scould this arctan instead?
+#     if np.mean(iqdata).real > 0:
+#         theta = -theta_raw
         
-    else:
-        theta = theta_raw
+#     else:
+#         theta = theta_raw
         
-    return iqdata * np.exp(1.j*theta), theta
+#     return iqdata * np.exp(1.j*theta), theta
+def align_carrier_with_readout_I(iqdata):
+    carrier = np.mean(iqdata)
+
+    theta = -np.angle(carrier)
+    return iqdata * np.exp(1j * theta), theta
 
 
 def s21_skewed(f, f0, Qr, Qcre, Qcim, A):
@@ -298,8 +303,28 @@ def fit_skewed(freq, s21_iq, approxQr=1e4, normalize=True, fr_lim=None,
         param_vals = [f0, Qr, Qc, Qi, s21fitp[2], s21fitp[3], s21fitp[4]]
         
         errf0, errQr, errQere, errQeim = errs[0:4] # error in f0, Qr, Qe_re, Qe_im
-        errQc = np.sqrt(errQere**2 + (2 * errQeim * Qe.imag/Qe.real)**2 + errQere*Qe.imag**2/Qe.real**2)
-        errQi = np.sqrt(Qi**4*(errQr**2/Qr**4 + errQc**2/Qc**4))
+
+
+        # errQc = np.sqrt(errQere**2 + (2 * errQeim * Qe.imag/Qe.real)**2 + errQere*Qe.imag**2/Qe.real**2)
+        # errQi = np.sqrt(Qi**4*(errQr**2/Qr**4 + errQc**2/Qc**4))
+        a, b = Qe.real, Qe.imag
+        if a <= 0 or Qc <= Qr:
+            raise ValueError("Fit implies a nonpositive coupling or internal Q")
+
+        # Qc = a + b**2 / a
+        grad_Qc = np.array([1 - (b / a)**2, 2 * b / a])
+        cov_ab = s21cov[np.ix_([2, 3], [2, 3])]
+        errQc = np.sqrt(max(grad_Qc @ cov_ab @ grad_Qc, 0.0))
+
+        # Qi = 1 / (1/Qr - 1/Qc); retain correlations with Qr.
+        grad_Qi = Qi**2 * np.array([
+            1 / Qr**2,
+            -grad_Qc[0] / Qc**2,
+            -grad_Qc[1] / Qc**2,
+        ])
+        cov_Qr_ab = s21cov[np.ix_([1, 2, 3], [1, 2, 3])]
+        errQi = np.sqrt(max(grad_Qi @ cov_Qr_ab @ grad_Qi, 0.0))
+
         errA = errs[-1]
         param_errs = [errf0, errQr, errQc, errQi, errQere, errQeim, errA]
 
@@ -344,94 +369,214 @@ def calc_rbw(fs, N):
 
 
 
-def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, 
-                                            rbw=None, baseline_nqp=None,
-                                            fs=None, N=None):
-    '''
-    using the GR noise nqp power spectral density, create a timestream of
-    nqp values that corresponds to this spectrum.
+# def make_nqp_timestream_from_Nqp_spectrum(res, frequencies, Nqp_spectrum, 
+#                                             rbw=None, baseline_nqp=None,
+#                                             fs=None, N=None):
+#     '''
+#     using the GR noise nqp power spectral density, create a timestream of
+#     nqp values that corresponds to this spectrum.
 
-    Parameters:
-    -----------
-    fs : sampling rate
+#     Parameters:
+#     -----------
+#     fs : sampling rate
 
-    N : (int) number of samples
-    '''
+#     N : (int) number of samples
+#     '''
 
-    if rbw is None:
-        if fs is None:
-            fs = max(frequencies)*2
-        if N is None:
-            N = len(frequencies)
-        rbw = fs / N
+#     if rbw is None:
+#         if fs is None:
+#             fs = max(frequencies)*2
+#         if N is None:
+#             N = len(frequencies)
+#         rbw = fs / N
+
+#     if baseline_nqp is None:
+#         baseline_nqp = res.calc_nqp()
+#     baseline_Nqp = baseline_nqp * res.VL_um3
+    
+#     # rbw = fs / N
+
+#     # frequencies = np.fft.fftfreq(N, d=1./fs)
+#     # frequencies, SN = self.calc_gr_PSD(frange=frequencies)
+#     SN = Nqp_spectrum
+
+#     power_spectrum_N = SN * rbw
+#     amplitude_spectrum_N = np.asarray(np.sqrt(power_spectrum_N), dtype=complex)
+
+#     random_phase_angles = np.random.rand(len(SN)) * 2*np.pi
+#     random_phases = np.exp(1.j*random_phase_angles)
+#     amplitude_spectrum_N *= random_phases
+
+#     dc_index = abs(frequencies).argmin()
+#     amplitude_spectrum_N[dc_index] = baseline_Nqp # the average value is the baseline population
+
+#     # timestream_N = 2*np.fft.ifft(amplitude_spectrum_N).real * len(SN)
+#     timestream_N = 2*np.fft.irfft(amplitude_spectrum_N, n=N) * len(SN)
+    
+#     return timestream_N / res.VL_um3
+
+def make_nqp_timestream_from_Nqp_spectrum(
+    res, frequencies, Nqp_spectrum,
+    rbw=None, baseline_nqp=None, fs=None, N=None,
+    method='fixed_amplitude'
+):
+    """Generate a quasiparticle density timestream from a one-sided
+    quasiparticle number PSD.
+    """
+    if N is None:
+        N = 2 * (len(frequencies) - 1)
+
+    if rbw is not None:
+        if fs is not None and not np.isclose(rbw, fs / N):
+            raise ValueError("rbw must equal fs / N")
+        fs = rbw * N
 
     if baseline_nqp is None:
         baseline_nqp = res.calc_nqp()
-    baseline_Nqp = baseline_nqp * res.VL_um3
+
+    number_timestream = make_timestream_from_spectral_density(
+        frequencies,
+        Nqp_spectrum,
+        baseline_value=baseline_nqp * res.VL_um3,
+        fs=fs,
+        N=N,
+        method=method
+    )
+    return number_timestream / res.VL_um3
+
+
+
+
+# def make_timestream_from_spectral_density(frequencies, spectral_density, baseline_value):
+#     '''
+#     using the GR noise nqp power spectral density, create a timestream of
+#     nqp values that corresponds to this spectrum.
+
+#     Parameters:
+#     -----------
+#     fs : sampling rate
+
+#     N : (int) number of samples
+#     '''
+
     
-    # rbw = fs / N
+#     fs = max(frequencies) * 2
+#     N = len(frequencies)
+#     rbw = fs / N
 
-    # frequencies = np.fft.fftfreq(N, d=1./fs)
-    # frequencies, SN = self.calc_gr_PSD(frange=frequencies)
-    SN = Nqp_spectrum
+#     power_spectrum = spectral_density * rbw
+#     amplitude_spectrum = np.asarray(np.sqrt(power_spectrum), dtype=complex)
 
-    power_spectrum_N = SN * rbw
-    amplitude_spectrum_N = np.asarray(np.sqrt(power_spectrum_N), dtype=complex)
+#     random_phase_angles = np.random.rand(len(power_spectrum)) * 2*np.pi
+#     random_phases = np.exp(1.j*random_phase_angles)
+#     amplitude_spectrum *= random_phases
 
-    random_phase_angles = np.random.rand(len(SN)) * 2*np.pi
-    random_phases = np.exp(1.j*random_phase_angles)
-    amplitude_spectrum_N *= random_phases
+#     dc_index = abs(frequencies).argmin()
+#     amplitude_spectrum[dc_index] = baseline_value # the average value is the baseline population
 
-    dc_index = abs(frequencies).argmin()
-    amplitude_spectrum_N[dc_index] = baseline_Nqp # the average value is the baseline population
-
-    # timestream_N = 2*np.fft.ifft(amplitude_spectrum_N).real * len(SN)
-    timestream_N = 2*np.fft.irfft(amplitude_spectrum_N, n=N) * len(SN)
+#     timestream = np.fft.ifft(amplitude_spectrum).real * len(spectral_density)
     
-    return timestream_N / res.VL_um3
+#     return timestream
 
 
+def make_timestream_from_spectral_density(
+    frequencies, spectral_density, baseline_value,
+    fs=None, N=None, method="fixed_amplitude", rng=None
+):
+    """Generate a real timestream from a one-sided PSD of any shape.
 
+    The PSD must be sampled on the uniform grid produced by
+    np.fft.rfftfreq(N, d=1/fs). Its units should be
+    (timestream units)^2 / Hz.
+    """
+    frequencies = np.asarray(frequencies)
+    psd = np.asarray(spectral_density)
 
-def make_timestream_from_spectral_density(frequencies, spectral_density, baseline_value):
-    '''
-    using the GR noise nqp power spectral density, create a timestream of
-    nqp values that corresponds to this spectrum.
+    if frequencies.ndim != 1 or psd.shape != frequencies.shape:
+        raise ValueError(
+            "frequencies and spectral_density must be 1D arrays of equal length"
+        )
+    if len(frequencies) < 2:
+        raise ValueError("At least two frequency bins are required")
 
-    Parameters:
-    -----------
-    fs : sampling rate
+    # A one-sided FFT of an even-length timestream has N/2 + 1 bins.
+    # Callers can supply N explicitly if they want an odd-length timestream.
+    if N is None:
+        N = 2 * (len(frequencies) - 1)
+    if N < 2:
+        raise ValueError("N must be at least 2")
 
-    N : (int) number of samples
-    '''
+    # The final rFFT bin has index N//2. This expression also works when
+    # N is odd, in which case the final bin is below the Nyquist frequency.
+    if fs is None:
+        fs = frequencies[-1] * N / (N // 2)
+    if fs <= 0:
+        raise ValueError("fs must be positive")
 
-    # if baseline_nqp is None:
-    #     baseline_nqp = res.calc_nqp()
-    # baseline_Nqp = baseline_nqp * res.VL_um3
-    
-    fs = max(frequencies) * 2
-    N = len(frequencies)
-    rbw = fs / N
+    # An inverse FFT assigns meaning to bins by their position. Check that
+    # the supplied frequencies describe those positions before using the PSD.
+    expected = np.fft.rfftfreq(N, d=1 / fs)
+    if (
+        len(frequencies) != len(expected)
+        or not np.allclose(frequencies, expected, rtol=1e-10, atol=0)
+    ):
+        raise ValueError(
+            "frequencies must match np.fft.rfftfreq(N, d=1/fs)"
+        )
 
-    # frequencies = np.fft.fftfreq(N, d=1./fs)
-    # frequencies, SN = self.calc_gr_PSD(frange=frequencies)
-    # SN = Nqp_spectrum
+    # The DC coefficient below sets the mean, so the PSD's DC value is unused.
+    # This permits, for example, a 1/f PSD that is undefined at 0 Hz.
+    if not np.all(np.isfinite(psd[1:])) or np.any(psd[1:] < 0):
+        raise ValueError("Non-DC PSD values must be finite and nonnegative")
+    if method not in ("fixed_amplitude", "gaussian"):
+        raise ValueError(
+            "method must be 'fixed_amplitude' or 'gaussian'"
+        )
 
-    power_spectrum = spectral_density * rbw
-    amplitude_spectrum = np.asarray(np.sqrt(power_spectrum), dtype=complex)
+    rng = np.random.default_rng(rng)
+    df = fs / N  # Width, in Hz, represented by each Fourier bin.
+    spectrum = np.zeros(len(expected), dtype=complex)
 
-    random_phase_angles = np.random.rand(len(power_spectrum)) * 2*np.pi
-    random_phases = np.exp(1.j*random_phase_angles)
-    amplitude_spectrum *= random_phases
+    # NumPy's inverse FFT divides by N. Multiplying the desired mean by N
+    # makes the mean of the resulting timestream equal baseline_value.
+    spectrum[0] = N * baseline_value
 
-    dc_index = abs(frequencies).argmin()
-    amplitude_spectrum[dc_index] = baseline_value # the average value is the baseline population
+    # Interior positive-frequency bins each have a matching negative-frequency
+    # bin, which irfft constructs automatically. For even N, exclude the final
+    # Nyquist bin because it needs separate, real-valued treatment.
+    interior = slice(1, -1 if N % 2 == 0 else None)
+    interior_psd = psd[interior]
+    count = len(interior_psd)
 
-    timestream = np.fft.ifft(amplitude_spectrum).real * len(spectral_density)
-    
-    return timestream
+    if method == "fixed_amplitude":
+        # Set each bin's power exactly to its PSD value times df. Random phase
+        # changes the waveform without changing that bin's power.
+        phases = rng.uniform(0, 2 * np.pi, count)
+        spectrum[interior] = (
+            N * np.sqrt(interior_psd * df / 2) * np.exp(1j * phases)
+        )
+    else:
+        # Draw independent real and imaginary components. Individual bin
+        # powers vary, while their average across realizations matches the PSD.
+        # Each component receives half of the complex coefficient's variance.
+        scale = N * np.sqrt(interior_psd * df / 4)
+        spectrum[interior] = scale * (
+            rng.standard_normal(count)
+            + 1j * rng.standard_normal(count)
+        )
 
+    if N % 2 == 0:
+        # The Nyquist bin is its own negative-frequency partner, so its
+        # coefficient must be real and uses a different normalization.
+        nyquist_scale = N * np.sqrt(psd[-1] * df)
+        if method == "fixed_amplitude":
+            spectrum[-1] = nyquist_scale * rng.choice((-1.0, 1.0))
+        else:
+            spectrum[-1] = nyquist_scale * rng.standard_normal()
 
+    # irfft supplies the conjugate negative-frequency bins and returns
+    # a real, N-sample timestream using NumPy's standard FFT normalization.
+    return np.fft.irfft(spectrum, n=N)
 
 
 

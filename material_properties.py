@@ -66,6 +66,19 @@ MATERIAL_DEFAULTS = {
         "Tc": 9.0,
         "Rsheet_N": 5.0,
     },
+    "alpha-Ta": {
+        "N0": 6.43e28, # /eV /m^3, Mcmillan 1968
+        "tau0": 1.78e-9, # s, Kaplan 1978 - Barends 2008 measures ~42ns!
+        "Tc": 4.4, # K
+        "rhoN": 8.4e-6/100 # ohm * cm --> ohm m
+        },
+    "alpha-Ta_barends": {
+        "N0": 6.43e28, # /eV /m^3, Mcmillan 1968
+        "tau0": 42e-9, # s, Kaplan 1978 - Barends 2008 measures ~42ns!
+        "Tc": 4.4, # K
+        "rhoN": 8.4e-6/100 # ohm * cm --> ohm m
+        }
+
 }
 
 

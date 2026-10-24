@@ -94,11 +94,10 @@ class MR_LEKID():
             Geometric inductance [H]. If None, computed from Lk and alpha_k.
             Default None.
         alpha_k : float
-            Kinetic inductance fraction, Lk / (Lk + Lg). Used only if Lg
+            Kinetic inductance fraction, Lk / (Lk + Lg + L_junk). Used only if Lg
             is None. Default 0.5.
         L_junk : float
-            Additional parasitic series inductance [H], if needed to match
-            a measured transfer function. Default 0.
+            Additional non-active series inductance [H]. Default 0.
         
         Readout circuit parameters
         --------------------------
@@ -158,14 +157,17 @@ class MR_LEKID():
 
             
         self.Lk = Lk
+        self.L_junk = L_junk
+
         if Lg is None:
             self.alpha_k = alpha_k
-            self.Lg = (self.Lk - self.alpha_k*self.Lk) / self.alpha_k
+            self.Lg = self.Lk / self.alpha_k - self.Lk - self.L_junk
         else:
             self.Lg = Lg
-            self.alpha_k = self.Lk / (self.Lk + self.Lg)
-        self.L = self.Lk + self.Lg
-        self.L_junk = L_junk
+            self.alpha_k = self.Lk / (self.Lk + self.Lg + self.L_junk)
+
+        self.L = self.Lk + self.Lg  # Excludes L_junk
+        
 
         self.C = C
         self.R = R
@@ -199,11 +201,11 @@ class MR_LEKID():
             print(self.generate_res_param_string())
         
         
-    def parallel_RLC(self, fc, C=None, L=None, R=None):
+    def parallel_RLC(self, fc, C=None, L=None, R=None, L_junk=None):
         '''
         Impedance of the parallel RLC resonator (without the coupling capacitor).
 
-        Computes Z_RLC = [1/Z_C + 1/(Z_L + R)]^{-1} at frequency fc.
+        Computes Z_RLC = [1/Z_C + 1/(Z_L + R + Z_L_junk)]^{-1} at frequency fc.
         This is the inner resonant branch before adding Cc in series (Eq. 3.3).
 
         Parameters
@@ -229,12 +231,15 @@ class MR_LEKID():
             L = self.L
         if R is None:
             R = self.R
+        if L_junk is None:
+            L_junk = self.L_junk
             
         w = 2*np.pi*fc
         ZC = 1./(1j*w*C)
         ZL = 1j*w*L
+        ZL_junk = 1j*w*L_junk
 
-        return 1./(1./ZC + 1./(ZL + R))
+        return 1./(1./ZC + 1./(ZL + R + ZL_junk))
     
     def total_impedance(self, fc, C=None, L=None, R=None, Cc=None, L_junk=None):
         '''
@@ -250,7 +255,7 @@ class MR_LEKID():
         C : float or None
             Shunt capacitance [F]. Uses self.C if None.
         L : float or None
-            Total inductance [H]. Uses self.L if None.
+            Lk + Lg, excluding L_junk
         R : float or None
             Series resistance [Ohm]. Uses self.R if None.
         Cc : float or None
@@ -275,15 +280,14 @@ class MR_LEKID():
         if L_junk is None:
             L_junk = self.L_junk
         
-        Zres = self.parallel_RLC(fc, L=L, C=C, R=R)
+        Zres = self.parallel_RLC(fc, L=L, C=C, R=R, L_junk=L_junk)
         ZCc = 1./(1j*2*np.pi*fc*Cc)
-        ZLjunk = 1j*2*np.pi*L_junk*fc
 
-        return Zres + ZCc + ZLjunk
+        return Zres + ZCc 
     
     
     
-    def compute_Vout(self, fc, Vin=None, L=None, C=None, R=None, Cc=None, 
+    def compute_Vout(self, fc, Vin=None, L=None, C=None, R=None, Cc=None, L_junk=None,
                     ZLNA=None, GLNA=None, input_atten_dB=None):
         '''
         Compute the output carrier voltage as a function of frequency.
@@ -303,7 +307,7 @@ class MR_LEKID():
         Vin : float or None
             Input carrier amplitude [V]. Uses self.Vin if None.
         L : float or None
-            Total inductance [H]. Uses self.L if None.
+            Lk + Lg, excluding L_junk
         C : float or None
             Shunt capacitance [F]. Uses self.C if None.
         R : float or None
@@ -332,6 +336,8 @@ class MR_LEKID():
             R = self.R
         if Cc is None:
             Cc = self.Cc
+        if L_junk is None:
+            L_junk = self.L_junk
         if Vin is None:
             Vin = self.Vin
         if ZLNA is None:
@@ -343,7 +349,7 @@ class MR_LEKID():
             
         r1, r2, r3 = self.get_att_vals(input_atten_dB)
         
-        parallel = 1. / ( 1./self.total_impedance(fc, L=L, C=C, R=R, Cc=Cc) + 1./ZLNA )
+        parallel = 1. / ( 1./self.total_impedance(fc, L=L, C=C, R=R, Cc=Cc, L_junk=L_junk) + 1./ZLNA )
         
         Vres = Vin * self.ptype(parallel, r1, r2, r3)
         Vout = GLNA * Vres
@@ -478,10 +484,12 @@ class MR_LEKID():
     
 
     def calc_IL(self, fc, Ires):
-        # Zres = new_lekid.total_impedance(carrier_freq)
+        '''
+        current through the inductor branch specifically
+        '''
 
         ZRLC = self.parallel_RLC(fc)
-        ZL = 2.j*np.pi*(self.Lk + self.Lg)*fc
+        ZL = 2.j*np.pi*(self.Lk + self.Lg + self.L_junk)*fc
         IL = Ires * ZRLC / (ZL + self.R)
 
         return IL
@@ -492,14 +500,15 @@ class MR_LEKID():
     # L and fr #
     ############
     
-    def compute_fr(self, L=None, C=None, R=None, Cc=None, presign2 = 1, verbose=False):
+    def compute_fr(self, L=None, C=None, R=None, Cc=None, L_junk=None,
+                        presign2 = 1, verbose=False):
         '''
         Compute the resonant frequency analytically.
 
         Solves for the frequency at which Im{Z_res} = 0 (the lower of the
         two zero crossings, where |Z_res| is minimised; see Fig. 3.3). The
         solution is the Wolfram Alpha closed-form expression for the
-        Cc + (L+R || C) circuit.
+        Cc + (L+R+L_junk || C) circuit.
 
         If no real root exists (overdamped resonance), falls back to
         locating the minimum of |V_out| numerically and sets
@@ -508,7 +517,7 @@ class MR_LEKID():
         Parameters
         ----------
         L : float or None
-            Total inductance [H]. Uses self.L if None.
+            Lk + Lg, excluding L_junk
         C : float or None
             Shunt capacitance [F]. Uses self.C if None.
         R : float or None
@@ -533,6 +542,10 @@ class MR_LEKID():
             R = self.R
         if Cc is None:
             Cc = self.Cc
+        if L_junk is None:
+            L_junk = self.L_junk
+
+        L = L + L_junk # they are in series so just merge them
         
         D = Cc
         presign = 1 # take only positive roots
@@ -606,13 +619,13 @@ class MR_LEKID():
         if L_junk is None:
             L_junk = self.L_junk
         
-        Zres = self.parallel_RLC(fc, L=L, C=C, R=R)
+        Zres = self.parallel_RLC(fc, L=L, C=C, R=R, L_junk=L_junk)
         ZCc = 1./(1j*2*np.pi*fc*Cc)
-        ZLjunk = 1j*2*np.pi*L_junk*fc
 
-        return (Zres + ZCc + ZLjunk).imag
+        return (Zres + ZCc ).imag
     
-    def compute_fr_numerical(self, quantity='IMAG', stepsize_factor=1e-5, nsteps=500, verbose=False, make_plot=False):
+    def compute_fr_numerical(self, quantity='IMAG', stepsize_factor=1e-5, 
+        nsteps=500, verbose=False, make_plot=False):
         '''
         Compute the resonant frequency numerically using a root-finding method.
 
@@ -652,7 +665,7 @@ class MR_LEKID():
         else:
             Zfunc = self.total_impedance_imag
     
-        guess = 1./(2*np.pi*np.sqrt(self.L*(self.C + self.Cc)))
+        guess = 1./(2*np.pi*np.sqrt((self.L+self.L_junk)*(self.C + self.Cc)))
         stepsize = guess * stepsize_factor
         plot_margin = stepsize * 20
         
@@ -733,7 +746,7 @@ class MR_LEKID():
             Internal quality factor.
         '''
         fr = self.compute_fr()
-        L = self.Lk + self.Lg
+        L = self.Lk + self.Lg + self.L_junk
         Qi = np.pi * fr *2 * L / self.R
         return Qi
 

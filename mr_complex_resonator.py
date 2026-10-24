@@ -158,7 +158,7 @@ class MR_complex_resonator():
             Additional real impedance added to R [Ohm], for modeling excess
             dissipation. Default 0.
         L_junk : float
-            Parasitic series inductance passed to MR_LEKID [H]. Default 0.
+            Non-active series inductance passed to MR_LEKID [H]. Default 0.
 
         Readout circuit parameters
         --------------------------
@@ -261,7 +261,6 @@ class MR_complex_resonator():
         self.sigma_initial = self.sigma1_initial - 1.j*self.sigma2_initial
         self.Zs_initial = self.calc_Zs(f=self.readout_f, sigma=self.sigma_initial)
         self.R_initial, self.Lk_initial = self.calc_R_L(f=self.readout_f, Zs=self.Zs_initial)
-        self.R_initial += R_spoiler
         
         # generate dark resonator
         self.Z0 = Z0
@@ -301,7 +300,6 @@ class MR_complex_resonator():
         self.sigma_dark = self.sigma1_dark - 1.j*self.sigma2_dark
         self.Zs_dark = self.calc_Zs(f=self.readout_f, sigma=self.sigma_dark)
         self.R_dark, self.Lk_dark = self.calc_R_L(f=self.readout_f, Zs=self.Zs_dark)
-        self.R_dark += R_spoiler
         
         # generate dark resonator
         self.C = C
@@ -855,7 +853,7 @@ class MR_complex_resonator():
         
         S_r = R * self.VL_um3 * nqp**2
         S_gth = R * self.VL_um3 * nqp_th**2 #
-        S_gth = R * self.VL_um3 * nqp**2 # thermalized g spectrum
+        # S_gth = R * self.VL_um3 * nqp**2 # thermalized g spectrum
         S_gopt = (pb_eff / (Delta))**2 * opt_eff * Popt * h * nu_opt * (1 + opt_eff * photon_occupancy)
         prefactor =  2 * (tau_qp**2 / (1 + (tau_qp * 2 * np.pi * frange)**2))
         S_N = (S_gth + S_gopt + S_r) 
@@ -1192,7 +1190,7 @@ class MR_complex_resonator():
         if Iin is None:
             Iin = self.lekid.calc_Iin(fc=fc, Zres=Zres)
         if Ires is None:
-            Ires = self.lekid.calc_Ires(Zres=Zres, Iin=Iin)
+            Ires = self.lekid.calc_Ires(fc=fc, Zres=Zres, Iin=Iin)
             
 
         power = abs(Ires)**2 * Zres.real

@@ -20,7 +20,7 @@ from .. import utils
 def single_resonance_iterator(res, carrier_freq_timestream,
                           carrier_Vin_timestream, nqp_timestream=None,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           Ires_fs=1e7, system_fs=1e4,
@@ -44,6 +44,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     fix_Lg = res.lekid.Lg
     lekid = res.lekid
     fr = lekid.compute_fr()
+
+    if Istar is None:
+        Istar = res.Istar
 
 
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
@@ -127,11 +130,11 @@ def single_resonance_iterator(res, carrier_freq_timestream,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict[step]['R_Isq'] = R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
@@ -195,9 +198,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
 
             # add the nonlinear current response
             if nonlinear_R:
-                R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+                R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
             R = R + res.R_spoiler
-            Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+            Lk = Lk * (1. + abs(IL)**2 / Istar**2)
 
             # generate new lekid with these params including the nonlinear Lk etc
             lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
@@ -233,7 +236,7 @@ def single_resonance_iterator_with_fb(
                           Icoeff=1., setpoint=None, theta_rot=0,
                           fb_fs=None, delay_nsamps=10,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           Ires_fs=1e7, stabilize_first=True):
@@ -248,6 +251,9 @@ def single_resonance_iterator_with_fb(
     Vin = starting_Vin
     lekid = res.lekid
     fr = lekid.compute_fr()
+
+    if Istar is None:
+        Istar = res.Istar
 
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
     nominal_tau = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
@@ -323,11 +329,11 @@ def single_resonance_iterator_with_fb(
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict[step]['R_Isq'] = R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
@@ -390,7 +396,7 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
                           Icoeff=1., #setpoint=None, theta_rot=0,
                           fb_fs=None, delay_nsamps=10,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           Ires_fs=1e7, stabilize_first=False,
@@ -402,6 +408,9 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
     
     res = setup_outdict['resonator']
     calsamps = setup_outdict['calsamps']
+
+    if Istar is None:
+        Istar = res.Istar
     
     if plot_calsamps:
         fig = plt.figure(figsize=(12, 5))
@@ -506,11 +515,11 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict[step]['R_Isq'] = R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
@@ -575,7 +584,7 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream,
                           carrier_Vin_timestream, nqp_timestream=None,
                           C_timestream=None,
                           watcher_span = 100e3, nwatchers=1000, 
-                          Icrit=1e-3,
+                          Istar=None,
                           nonlinear_R=False, alpha_R=1e3,
                           save_watcher_data=True,
                           Ires_fs=1e7, system_fs=1e4,
@@ -599,6 +608,8 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream,
     fix_Lg = res.lekid.Lg
     lekid = res.lekid
     fr = lekid.compute_fr()
+    if Istar is None:
+        Istar = res.Istar
 
 
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
@@ -685,11 +696,11 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream,
 
         # add the nonlinear current response
         if nonlinear_R:
-            R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+            R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
         R = R + res.R_spoiler
         outdict[step]['R_Isq'] = R
                 
-        Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+        Lk = Lk * (1. + abs(IL)**2 / Istar**2)
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
@@ -753,9 +764,9 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream,
 
             # add the nonlinear current response
             if nonlinear_R:
-                R = R * (1 + alpha_R*abs(IL)**2 / Icrit**2)
+                R = R * (1 + alpha_R*abs(IL)**2 / Istar**2)
             R = R + res.R_spoiler
-            Lk = Lk * (1. + abs(IL)**2 / Icrit**2)
+            Lk = Lk * (1. + abs(IL)**2 / Istar**2)
 
             # generate new lekid with these params including the nonlinear Lk etc
             lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
