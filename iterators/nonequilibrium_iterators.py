@@ -41,7 +41,6 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     So anyway basically we are just investigating the time constant associated with the change in Ires, which reuslts
     from this change in Lk.
     '''
-    fix_Lg = res.lekid.Lg
     lekid = res.lekid
     fr = lekid.compute_fr()
 
@@ -119,10 +118,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict[step]['Lk'] = Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        # lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, 
-                C=res.C, Cc=res.Cc, Vin=Vin, input_atten_dB=res.input_atten_dB)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         Zres0 = new_lekid.total_impedance(carrier_freq) # the base impedance without nonlinearity
         outdict[step]['fr0'] = fr0
@@ -138,10 +136,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        # lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        lekid_params = dict(R=R, Lk=Lk, Lg=res.Lg, 
-                C=res.C, Cc=res.Cc, Vin=Vin, input_atten_dB=res.input_atten_dB)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         Vout = new_lekid.compute_Vout(carrier_freq) ###
         
         
@@ -203,8 +200,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
             Lk = Lk * (1. + abs(IL)**2 / Istar**2)
 
             # generate new lekid with these params including the nonlinear Lk etc
-            lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-            new_lekid = MR_LEKID(**lekid_params)
+            new_lekid = res.lekid.new_lekid_with_state(
+                R=R, Lk=Lk, Vin=Vin
+            )
             Vout = new_lekid.compute_Vout(carrier_freq)
             calsamps.append(Vout)
             
@@ -247,7 +245,6 @@ def single_resonance_iterator_with_fb(
         fb_fs = Ires_fs
     meas_buf = deque([0.]*delay_nsamps, maxlen=delay_nsamps) # let's just use a single delay for now
         
-    fix_Lg = res.lekid.Lg
     Vin = starting_Vin
     lekid = res.lekid
     fr = lekid.compute_fr()
@@ -322,8 +319,9 @@ def single_resonance_iterator_with_fb(
         outdict[step]['Lk'] = Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict[step]['fr0'] = fr0
 
@@ -337,8 +335,9 @@ def single_resonance_iterator_with_fb(
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         watcherval = new_lekid.compute_Vout(watcher_frange)
         outdict[step]['fr'] = new_lekid.compute_fr()
         if save_watcher_data:
@@ -444,7 +443,6 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
     meas_buf = deque([Vout_setpoint]*delay_nsamps, maxlen=delay_nsamps) # let's just use a single delay for now
     print(meas_buf)
 
-    fix_Lg = res.lekid.Lg
     fr = res.lekid.compute_fr()
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
     nominal_tau = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
@@ -508,8 +506,9 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
         outdict[step]['Lk'] = Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict[step]['fr0'] = fr0
 
@@ -523,8 +522,9 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
         outdict[step]['Lk_Isq'] = Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         watcherval = new_lekid.compute_Vout(watcher_frange)
         watcherval *= np.exp(1.j*theta_rot)
         outdict[step]['fr'] = new_lekid.compute_fr()

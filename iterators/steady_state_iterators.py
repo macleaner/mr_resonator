@@ -47,7 +47,6 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     # nominal_tau_targ = Qr / (2*np.pi*fr) ### we are assuming this doesn't change with readout current, which is clearly wrong
     
     # we need to know the other impedances in the nearby circuit to compute the current
-    input_atten_dB = target.lekid.input_atten_dB
     r1, r2, r3 = target.lekid.get_att_vals(target.lekid.input_atten_dB)
     ZLNA = 50.
     Zatt = r3
@@ -132,9 +131,9 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
             outdict[step]['targ']['Lk_Isq']['iters'].append(targ_Lk)
             
             # generate new lekid with these params
-            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, 
-                C=target.C, Cc=target.Cc, Vin=carrier_Vin, input_atten_dB=input_atten_dB)
-            targ_new_lekid = MR_LEKID(**targ_lekid_params)
+            targ_new_lekid = target.lekid.new_lekid_with_state(
+                R=targ_R, Lk=targ_Lk, Vin=carrier_Vin
+            )
             targ_fr = targ_new_lekid.compute_fr()
             outdict[step]['targ']['fr']['iters'].append(targ_fr)
             
@@ -364,15 +363,12 @@ def two_resonance_iterator(target, neighbour,
             outdict[step]['neigh']['Lk_Isq']['iters'].append(neigh_Lk)
             
             # generate new lekid with these params
-            targ_lekid_params = dict(R=targ_R, Lk=targ_Lk, Lg=target.Lg, 
-                    C=target.C, Cc=target.Cc, Vin=carrier_Vin, 
-                    input_atten_dB=target.input_atten_dB)
-            targ_new_lekid = MR_LEKID(**targ_lekid_params)
-            
-            neigh_lekid_params = dict(R=neigh_R, Lk=neigh_Lk, Lg=neighbour.Lg,
-                    C=neighbour.C, Cc=neighbour.Cc, 
-                    Vin=carrier_Vin, input_atten_dB=neighbour.input_atten_dB)
-            neigh_new_lekid = MR_LEKID(**neigh_lekid_params)
+            targ_new_lekid = target.lekid.new_lekid_with_state(
+                R=targ_R, Lk=targ_Lk, Vin=carrier_Vin
+            )
+            neigh_new_lekid = neighbour.lekid.new_lekid_with_state(
+                R=neigh_R, Lk=neigh_Lk, Vin=carrier_Vin
+            )
             
             # compute impedances and current for next iter
             Ztarg = targ_new_lekid.total_impedance(fc=carrier_freq)

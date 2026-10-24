@@ -16,7 +16,6 @@ from collections import deque
 
 
 from ..mr_complex_resonator import MR_complex_resonator
-from ..mr_lekid import MR_LEKID
 from .. import utils
 
 
@@ -40,7 +39,6 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate
     '''
-    fix_Lg = res.lekid.Lg
     fr = res.lekid.compute_fr()
 
     Qr, Qi, Qc = res.lekid.fit_for_Q_values()
@@ -145,8 +143,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk'] += Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict['nature_fs'][step]['fr0'] = fr0
         outdict['system_fs'][system_step]['fr0'] += fr0
@@ -163,8 +162,9 @@ def single_resonance_iterator(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         Vout = new_lekid.compute_Vout(carrier_freq)  
         outdict['nature_fs'][step]['fr'] = new_lekid.compute_fr()
         outdict['nature_fs'][step]['carrier_Vout'] = Vout        
@@ -246,7 +246,6 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate
     '''
-    fix_Lg = res.lekid.Lg
     fr = res.lekid.compute_fr()
     # print(yes)
 
@@ -349,8 +348,9 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk'] += Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict['nature_fs'][step]['fr0'] = fr0
         outdict['system_fs'][system_step]['fr0'] += fr0
@@ -367,8 +367,9 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         Vout = new_lekid.compute_Vout(carrier_freq) * np.exp(1.j*theta_rot)
         outdict['nature_fs'][step]['fr'] = new_lekid.compute_fr()
         outdict['nature_fs'][step]['carrier_Vout'] = Vout        
@@ -459,7 +460,6 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate
     '''
-    fix_Lg = res.lekid.Lg
     fr = res.lekid.compute_fr()
     # print(yes)
 
@@ -562,8 +562,9 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk'] += Lk
 
         # generate new lekid with these params to get the fr0 from nqp only
-        lekid_params = dict(R=R+res.R_spoiler, Lk=Lk, Lg=res.Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R+res.R_spoiler, Lk=Lk, Vin=Vin
+        )
         fr0 = new_lekid.compute_fr() # the 'base' fr, without nonlinearity
         outdict['nature_fs'][step]['fr0'] = fr0
         outdict['system_fs'][system_step]['fr0'] += fr0
@@ -580,8 +581,9 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
         outdict['system_fs'][system_step]['Lk_Isq'] += Lk
 
         # generate new lekid with these params including the nonlinear Lk etc
-        lekid_params = dict(R=R, Lk=Lk, Lg=fix_Lg, C=res.C, Cc=res.Cc, Vin=Vin)
-        new_lekid = MR_LEKID(**lekid_params)
+        new_lekid = res.lekid.new_lekid_with_state(
+            R=R, Lk=Lk, Vin=Vin
+        )
         Vout = new_lekid.compute_Vout(carrier_freq) * np.exp(1.j*theta_rot)
         outdict['nature_fs'][step]['fr'] = new_lekid.compute_fr()
         outdict['nature_fs'][step]['carrier_Vout'] = Vout        

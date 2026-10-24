@@ -25,6 +25,7 @@ maclean.rouble@mail.mcgill.ca
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
+import copy
 
 import matplotlib as mpl
 
@@ -136,25 +137,6 @@ class MR_LEKID():
             If True, print resonator parameters on instantiation. Default False.
         '''
 
-        self._init_params = {
-            "C": C,
-            "R": R,
-            "Cc": Cc,
-            "Lk": Lk,
-            "Lg": Lg,
-            "alpha_k": alpha_k,
-            "L_junk": L_junk,
-            "Qi": Qi,
-            "Qc": Qc,
-            "Vin": Vin,
-            "fr_presign2": fr_presign2,
-            "system_termination": system_termination,
-            "input_atten_dB": input_atten_dB,
-            "ZLNA": ZLNA,
-            "Z0": Z0,
-            "GLNA": GLNA,
-        }
-
             
         self.Lk = Lk
         self.L_junk = L_junk
@@ -191,6 +173,27 @@ class MR_LEKID():
         self.LNA_noise_vrms_per_rtHz = np.sqrt(1.38e-23 * self.LNA_noise_temperature * 4 * self.system_termination) # over a 1 Hz bw
 
         self.nonres_flag = False # if the imaginary part of the impedance has no real roots
+
+        self._init_params = {
+                "C": self.C,
+                "R": self.R,
+                "Cc": self.Cc,
+                "Lk": self.Lk,
+                "Lg": self.Lg,
+                "alpha_k": self.alpha_k,
+                "L_junk": self.L_junk,
+                "Qi": Qi,
+                "Qc": Qc,
+                "Vin": self.Vin,
+                "fr_presign2": fr_presign2,
+                "system_termination": self.system_termination,
+                "input_atten_dB": self.input_atten_dB,
+                "ZLNA": self.ZLNA,
+                "Z0": self.Z0,
+                "GLNA": self.GLNA,
+                "LNA_noise_temperature": self.LNA_noise_temperature,
+                "name": self.name,
+            }
         
         
         if plot_response:
@@ -199,6 +202,17 @@ class MR_LEKID():
         if verbose:
             print('Created new resonator, %s, with params:'%(self.name))
             print(self.generate_res_param_string())
+
+
+    def new_lekid_with_state(self, *, R, Lk, Vin):
+        params = dict(self._init_params)
+        params.update(
+            R=R, Lk=Lk, Vin=Vin,
+        )
+
+        return MR_LEKID(
+            **copy.deepcopy(params)
+        )
         
         
     def parallel_RLC(self, fc, C=None, L=None, R=None, L_junk=None):
