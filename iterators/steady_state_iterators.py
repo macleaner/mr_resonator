@@ -32,6 +32,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     comb_hither_fdetune: the target frequency separation between the carrier
         and the driven resonant frequency
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
 
     target = copy.deepcopy(res)
     if Istar is None:
@@ -187,6 +188,7 @@ def single_resonance_iterator(res, carrier_freq_timestream, carrier_Vin_timestre
     outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
     outdict[step]['comb_hithered'] = stop_flag
         
+    outdict[0]['call_parameters'] = call_parameters
     return outdict
 
 
@@ -209,6 +211,7 @@ def two_resonance_iterator(target, neighbour,
     '''
     
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
 
 
     # probe sweep parameters
@@ -445,6 +448,7 @@ def two_resonance_iterator(target, neighbour,
     outdict[step]['neighbour'] = neighbour
     outdict[step]['comb_hithered'] = stop_flag
 
+    outdict[0]['call_parameters'] = call_parameters
     return outdict
 
 
@@ -464,7 +468,7 @@ def set_up_for_feedback(res, foffset=-30e3,
     
 
     fr0 = res.lekid.compute_fr()
-    carrier_freq = res.lekid.compute_fr() + foffset + fdetune
+    carrier_freq = res.lekid.compute_fr() + foffset
     carrier_freq_timestream = np.ones(len(carrier_Vin_timestream)) * carrier_freq
 
     # first just sweep across the whole range and get the comb hither point
@@ -527,6 +531,26 @@ def set_up_for_feedback(res, foffset=-30e3,
     Vin_setpoint = outdict[steps[-1]]['carrier_Vin']
     watcher_Vout = outdict[steps[-1]]['watcher_Vout']
     nqp = comb_hithered_resonator.calc_nqp()
+
+    # measure the local slope of the Vout response to Vin
+    dVin = 0.01 * Vin_setpoint
+    transfer = []
+    for Vin_probe in (Vin_setpoint - dVin, Vin_setpoint + dVin):
+        probe = single_resonance_iterator(
+            res=comb_hithered_resonator,
+            carrier_freq_timestream=np.array([carrier_freq]),
+            carrier_Vin_timestream=np.array([Vin_probe]),
+            nqp_timestream=np.array([nqp]),
+            save_watcher_data=False,
+            niters=200, damp=0.1, Istar=Istar,
+        )[0]
+        transfer.append(probe['carrier_Vout']['final'] / Vin_probe)
+
+    outdict[steps[-1]]['d_Vout_over_Vin_d_Vin'] = (
+        transfer[1] - transfer[0]
+    ) / (2 * dVin)
+
+
     nqp_timestream = np.random.normal(nqp, nqp*calsamps_nqp_amplitude, n_calsamps)
     # print(np.mean(nqp_timestream), np.std(nqp_timestream))
     carrier_Vin_timestream = Vin_setpoint * np.ones(len(nqp_timestream))
@@ -576,15 +600,6 @@ def set_up_for_feedback(res, foffset=-30e3,
         axarr[2].axhline(fdetune*1e-3, linestyle='--', label='$f_{detune}$')
         axarr[2].set_ylabel('$f_{carrier} - f_r$ [kHz]')
 
-        # axarr[3].plot(steps, Lk, label='Lk')
-        # axarr[3].plot(steps, Lk_Isq, label='Lk(I)')
-        # axarr[3].set_ylabel('Lk')
-
-        # axarr[4].plot(steps, abs(IL))
-        # axarr[4].set_ylabel('IL')
-
-        # axarr[5].plot(steps, abs(Zres))
-        # axarr[5].set_ylabel('Zres')
 
     # scatter the calsamps on top
     calsamps_steps = list(outdict_calsamps.keys())
@@ -629,6 +644,7 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
     comb_hither_fdetune: the target frequency separation between the carrier
         and the driven resonant frequency
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     if Istar is None:
         Istar = res.Istar
 
@@ -791,4 +807,5 @@ def single_resonance_iterator_varyC(res, carrier_freq_timestream, carrier_Vin_ti
     outdict[step]['carrier_Vout']['final'] = outdict[step]['carrier_Vout']['iters'][-1]
     outdict[step]['comb_hithered'] = stop_flag
         
+    outdict[0]['call_parameters'] = call_parameters
     return outdict

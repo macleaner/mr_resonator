@@ -39,6 +39,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     if Istar is None:
         Istar = res.Istar
 
@@ -228,6 +229,8 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     outdict['system_fs'][system_step]['comb_hithered'] = stopflag
     
     
+    outdict['nature_fs'][0]['call_parameters'] = call_parameters
+    outdict['system_fs'][min(outdict['system_fs'])]['call_parameters'] = call_parameters
     return outdict
 
 
@@ -246,6 +249,7 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     if Istar is None:
         Istar = res.Istar
 
@@ -392,14 +396,15 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
         IL = new_lekid.calc_IL(carrier_freq, Ires)
         outdict['nature_fs'][step]['t'] = step * ttt
 
-        if step % sample_rate_factor == 1:
-            outdict['system_fs'][system_step]['t'] = system_step * (1./system_fs)
+        if (step + 1) % sample_rate_factor == 0:
+            outdict['system_fs'][system_step]['t'] = system_step / system_fs
             
             if save_watcher_data:
                 watcherval = new_lekid.compute_Vout(watcher_frange)
                 outdict['system_fs'][system_step]['watcher_Vout'] = watcherval
                 
-            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 'carrier_Vout', 'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
+            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 'carrier_Vout', 
+                                'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
                 outdict['system_fs'][system_step][param] /= sample_rate_factor # save the mean value from this sampling step   
 
             ## update the feedback
@@ -425,23 +430,17 @@ def single_resonance_iterator_with_fb(res, carrier_freq_timestream,
         step += 1
 
 
-    # check whether the last system timestep was completed:
-    if (step-1)%sample_rate_factor: # if this is nonzero, then the step did not complete
-#         print('last system step (%d) did not complete'%(step-1))
-#         print(step, sample_rate_factor, (step-1)%sample_rate_factor)
-        outdict['system_fs'].pop(system_step)
+    outdict['system_fs'].pop(system_step)
     
-    step -= 1
     system_step -= 1
     outdict['system_fs'].pop(0)
-        
-#     outdict['system_fs'].pop(system_step)   
+         
     # return the final version of the resonator, with the drive applied
     res.lekid = new_lekid
-    outdict['system_fs'][system_step]['resonator'] = res
-    # outdict['system_fs'][system_step]['comb_hithered'] = stopflag
+    outdict['system_fs'][system_step]['resonator'] = res    
     
-    
+    outdict['nature_fs'][0]['call_parameters'] = call_parameters
+    outdict['system_fs'][min(outdict['system_fs'])]['call_parameters'] = call_parameters
     return outdict
 
 
@@ -460,6 +459,7 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
     '''
     NOTE the assumption is the timestreams will be sampled at the nature sampling rate.
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     if Istar is None:
         Istar = res.Istar
 
@@ -606,14 +606,15 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
         IL = new_lekid.calc_IL(carrier_freq, Ires)
         outdict['nature_fs'][step]['t'] = step * ttt
 
-        if step % sample_rate_factor == 1:
-            outdict['system_fs'][system_step]['t'] = system_step * (1./system_fs)
+        if (step + 1) % sample_rate_factor == 0:
+            outdict['system_fs'][system_step]['t'] = system_step / system_fs
             
             if save_watcher_data:
                 watcherval = new_lekid.compute_Vout(watcher_frange)
                 outdict['system_fs'][system_step]['watcher_Vout'] = watcherval
                 
-            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 'carrier_Vout', 'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
+            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 
+                            'carrier_Vout', 'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
                 outdict['system_fs'][system_step][param] /= sample_rate_factor # save the mean value from this sampling step   
 
             ## update the feedback
@@ -622,39 +623,37 @@ def single_resonance_iterator_with_fb_2(res, carrier_freq_timestream,
             Vout_delayed = meas_buf[0]
             ttt_sys = 1./system_fs
             # acc += (Vout_delayed.imag - setpoint.imag * Vin) * (ttt_sys) * Icoeff
-            acc += (setpoint.imag*Vin - Vout_delayed.imag) * (ttt_sys) * Icoeff 
-            next_Vin = starting_Vin * (1 + acc)
+            # acc += (setpoint.imag*Vin - Vout_delayed.imag) * (ttt_sys) * Icoeff 
+            next_acc = acc + (setpoint.imag*Vin - Vout_delayed.imag) * (ttt_sys) * Icoeff 
+            next_Vin = starting_Vin * (1 + next_acc)
             # enforce non negative and non infinite
             min_Vin = 0
             max_Vin = 1e-1
             if next_Vin > min_Vin and next_Vin < max_Vin:
                 Vin = next_Vin
-                # Vin = starting_Vin * (1 + acc)
+                acc = next_acc
             outdict['system_fs'][system_step]['acc'] = acc
     
             system_step += 1
             outdict['system_fs'][system_step] = {}
-            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 'carrier_Vout', 'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
+            for param in ['Iin', 'Ires', 'Zres', 'ZRLC', 'IL', 'nqp', 
+                            'carrier_Vout', 'fr', 'fr0', 'Lk', 'R', 'Lk_Isq', 'R_Isq']:
                 outdict['system_fs'][system_step][param] = 0
             
         step += 1
 
 
-    # check whether the last system timestep was completed:
-    if (step-1)%sample_rate_factor: # if this is nonzero, then the step did not complete
-#         print('last system step (%d) did not complete'%(step-1))
-#         print(step, sample_rate_factor, (step-1)%sample_rate_factor)
-        outdict['system_fs'].pop(system_step)
+    outdict['system_fs'].pop(system_step)
     
-    step -= 1
+    # step -= 1
     system_step -= 1
     outdict['system_fs'].pop(0)
-        
-#     outdict['system_fs'].pop(system_step)   
+         
     # return the final version of the resonator, with the drive applied
     res.lekid = new_lekid
     outdict['system_fs'][system_step]['resonator'] = res
-    # outdict['system_fs'][system_step]['comb_hithered'] = stopflag
     
     
+    outdict['nature_fs'][0]['call_parameters'] = call_parameters
+    outdict['system_fs'][min(outdict['system_fs'])]['call_parameters'] = call_parameters
     return outdict

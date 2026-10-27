@@ -41,6 +41,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
     So anyway basically we are just investigating the time constant associated with the change in Ires, which reuslts
     from this change in Lk.
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     lekid = res.lekid
     fr = lekid.compute_fr()
 
@@ -218,6 +219,7 @@ def single_resonance_iterator(res, carrier_freq_timestream,
             IL = new_lekid.calc_IL(carrier_freq, Ires)
     if gather_calsamps:
         outdict[step]['calsamps'] = np.asarray(calsamps)
+    outdict[0]['call_parameters'] = call_parameters
     return outdict
 
 
@@ -236,6 +238,7 @@ def single_resonance_iterator_with_fb(
     '''
 
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     if fb_fs == None: ####
         fb_fs = Ires_fs
     meas_buf = deque([0.]*delay_nsamps, maxlen=delay_nsamps) # let's just use a single delay for now
@@ -375,6 +378,7 @@ def single_resonance_iterator_with_fb(
     res.lekid = new_lekid
     outdict[step]['resonator'] = res
     
+    outdict[0]['call_parameters'] = call_parameters
     return outdict
     
     
@@ -395,6 +399,7 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
     '''
 
     '''
+    call_parameters = copy.deepcopy(dict(locals()))
     
     
     res = setup_outdict['resonator']
@@ -558,4 +563,5 @@ def single_resonance_iterator_with_fb_outdict(setup_outdict,
     res.lekid = new_lekid
     outdict[step]['resonator'] = res
     
+    outdict[0]['call_parameters'] = call_parameters
     return outdict
